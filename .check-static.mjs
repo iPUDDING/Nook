@@ -1,0 +1,23 @@
+import { chromium } from "playwright";
+const errores = [];
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "es-AR" })).newPage();
+page.on("console", (m) => { if (m.type() === "error" && !/favicon/i.test(m.text())) errores.push(m.text()); });
+page.on("pageerror", (e) => errores.push("pageerror: " + e.message));
+await page.goto("http://127.0.0.1:4321/", { waitUntil: "networkidle" });
+await page.waitForSelector('aside[aria-label="Barra lateral"]', { timeout: 15000 });
+await page.waitForTimeout(800);
+const bloques = await page.locator("[data-block-id]").count();
+const titulo = await page.locator("textarea").first().inputValue();
+// probamos que la voz arranque y el mapa mental abra desde el export estático
+await page.keyboard.press("Control+Shift+R");
+await page.waitForTimeout(500);
+const barra = await page.locator('[role="region"][aria-label*="lectura"]').count();
+await page.keyboard.press("Control+Shift+M");
+await page.waitForTimeout(600);
+const mapa = await page.locator('svg[role="img"]').count();
+await page.screenshot({ path: "/tmp/static-export.png" });
+await browser.close();
+console.log(`bloques=${bloques} titulo="${titulo}" barraVoz=${barra} mapa=${mapa}`);
+console.log(errores.length ? "ERRORES:\n - " + errores.join("\n - ") : "✔ sin errores de consola");
+process.exit(errores.length ? 1 : 0);

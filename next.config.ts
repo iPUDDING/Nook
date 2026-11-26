@@ -1,7 +1,24 @@
 import type { NextConfig } from "next";
 
+/**
+ * `BUILD_TARGET=static` produce un sitio 100 % estático en `out/`.
+ *
+ * Hace falta porque de eso dependen dos cosas: el .exe (Tauri sirve archivos,
+ * no un servidor Node) y el artifact descargable de CI. En el uso normal —dev y
+ * `npm run build` para Vercel— la app sigue funcionando igual que siempre.
+ */
+const isStatic = process.env.BUILD_TARGET === "static";
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  ...(isStatic
+    ? {
+        output: "export" as const,
+        // el export estático no tiene el optimizador de imágenes de Next
+        images: { unoptimized: true },
+      }
+    : {}),
 
   // El sandbox sirve la app detrás de un proxy con otro Host. Sin esto Next
   // responde 403 a los assets de desarrollo (/_next/*) y la página queda pelada.

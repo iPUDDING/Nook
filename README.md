@@ -21,8 +21,9 @@ Next.js 15 (App Router) + React 19 + TypeScript + Tailwind + Zustand.
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
-npm run verificar    # antes de subir: tsc --noEmit + next build
+npm run dev            # http://localhost:3000
+npm run verificar      # antes de subir: tsc --noEmit + next build
+npm run build:static   # genera out/ (sitio estático: base del .exe y del artifact)
 ```
 
 Producción:
@@ -203,7 +204,11 @@ mi-app/
 │   ├── markdown.ts           Markdown ⇄ bloques, contornos, exportar HTML/MD
 │   ├── mindmap.ts            árbol + layout tidy (puro)
 │   └── utils.ts              árbol de páginas, fechas, paleta, descargas
-├── scripts/capturas.mjs      17 capturas + verificación de runtime
+├── src-tauri/                andamiaje de escritorio (Cargo, conf, permisos, íconos)
+├── .github/workflows/        ci.yml (build web) · desktop.yml (.exe/.msi)
+├── scripts/
+│   ├── capturas.mjs          17 capturas + verificación de runtime
+│   └── export-static.mjs     build:static con la variable de entorno
 └── docs/
     ├── capturas/             PNGs generados por ese script
     ├── OPENHUB.md            qué se integró del spec y qué no, con motivos
@@ -214,11 +219,21 @@ mi-app/
 
 ## Integración continua
 
-`.github/workflows/ci.yml` compila en **cada push a `main` y en cada pull
-request**: `npm ci` → `tsc --noEmit` → `next build`, y deja el `.next` como
-artefacto descargable. Si algo se rompe, GitHub te lo marca en el commit antes de
-que lo descubras en producción. No necesita ningún secreto ni variable de
-entorno.
+Dos workflows, con propósitos distintos:
+
+**`ci.yml`** — en cada push a `main` y en cada pull request: `npm ci` →
+`tsc --noEmit` → `next build` → `npm run build:static`. Deja un artifact
+**`nook-web`** con el sitio estático comprimido, listo para servir o desplegar en
+cualquier hosting estático. Se sube un `.zip` de `out/` y no la carpeta `.next`
+porque `upload-artifact` **ignora archivos ocultos desde la v4.4** y `.next`
+empieza con punto: eso producía el warning `No files were found with the provided
+path: .next`.
+
+**`desktop.yml`** — manual (*Actions → desktop → Run workflow*). Compila Rust en
+`windows-latest` y deja el **`.msi` y el `.exe`** en el artifact `nook-windows`.
+Tarda ~10-15 min la primera vez. Ver [docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md).
+
+Ninguno necesita secretos ni variables de entorno.
 
 ---
 
@@ -252,7 +267,9 @@ Guía completa con los tres caminos y diagnóstico de fallos: **[docs/GITHUB.md]
 5. Si lo vas a desplegar: importá el repo en Vercel/Netlify. Es un proyecto Next
    estándar — build `npm run build`, output `.next`, sin variables de entorno.
 
-Para empaquetarlo como aplicación de escritorio (Tauri v2), seguí
+**Para bajar el instalador de Windows:** el andamiaje de Tauri ya está en
+`src-tauri/` — Actions → **desktop** → *Run workflow* → Artifacts →
+`nook-windows`. Detalles y diagnóstico en
 **[docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md)**.
 
 > Si arrancás desde el `.zip`: descomprimí, abrí la carpeta `nook` en GitHub

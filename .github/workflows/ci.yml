@@ -12,9 +12,9 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -28,9 +28,21 @@ jobs:
       - name: Build de producción
         run: npm run build
 
-      - name: Guardar el build como artefacto
-        uses: actions/upload-artifact@v4
+      # Genera out/ y lo empaqueta. Se sube un .zip y no la carpeta .next porque
+      # upload-artifact IGNORA los archivos/dirs que empiezan con punto desde la
+      # v4.4: subir ".next" produce "No files were found with the provided path".
+      - name: Sitio estático descargable
+        run: |
+          npm run build:static
+          cd out
+          zip -qr ../nook-web.zip .
+          cd ..
+          ls -lh nook-web.zip
+
+      - name: Publicar el artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: nook-build
-          path: .next
-          retention-days: 7
+          name: nook-web
+          path: nook-web.zip
+          if-no-files-found: error
+          retention-days: 14
