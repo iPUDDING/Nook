@@ -1,0 +1,36 @@
+name: build
+
+# Compila en cada push y en cada pull request: si el build de Next falla,
+# GitHub te lo dice antes de que lo descubras en producción.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias (bloqueadas por package-lock)
+        run: npm ci
+
+      - name: Verificar tipos
+        run: npx tsc --noEmit
+
+      - name: Build de producción
+        run: npm run build
+
+      - name: Guardar el build como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: nook-build
+          path: .next
+          retention-days: 7

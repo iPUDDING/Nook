@@ -1,0 +1,373 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Tokens
+   Los valores salen del análisis (ANALISIS.md §2): la app usa una escala de
+   grises cálida con negro de texto rgb(55,53,47), superficie blanca y sidebar
+   un punto más oscura. Se declaran como tripletes RGB para poder usar
+   `rgb(var(--x) / <alpha-value>)` desde Tailwind.
+   ========================================================================== */
+:root {
+  --surface: 255 255 255;
+  --surface-side: 247 247 245;
+  --surface-hover: 239 239 237;
+  --surface-active: 232 232 230;
+  --surface-pop: 255 255 255;
+
+  --fg: 55 53 47;
+  --fg-soft: 85 82 74;
+  --fg-muted: 120 119 116;
+  --fg-faint: 155 154 151;
+
+  --line: 233 233 231;
+  --accent: 35 131 226;
+  --accent-soft: 231 243 248;
+
+  --selection: 203 232 255;
+  color-scheme: light;
+}
+
+.dark {
+  --surface: 25 25 25;
+  --surface-side: 32 32 32;
+  --surface-hover: 42 42 42;
+  --surface-active: 52 52 52;
+  --surface-pop: 37 37 37;
+
+  --fg: 255 255 255;
+  --fg-soft: 224 224 224;
+  --fg-muted: 155 155 155;
+  --fg-faint: 120 120 120;
+
+  --line: 47 47 47;
+  --accent: 35 131 226;
+  --accent-soft: 28 40 53;
+
+  --selection: 47 72 94;
+  color-scheme: dark;
+}
+
+/* ================================== base ================================== */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: rgb(var(--surface));
+}
+
+body {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--fg));
+  font-feature-settings: "lnum" 1, "locl" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background-color: rgb(var(--selection));
+}
+
+/* Scrollbars discretas, como en la app original */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--fg) / 0.2) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--fg) / 0.15);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--fg) / 0.3);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ================================ controles =============================== */
+@layer components {
+  .menu {
+    @apply rounded-pop border border-line bg-surface-pop shadow-menu p-1;
+  }
+  .menu-item {
+    @apply flex w-full items-center gap-2 rounded-[4px] px-2 py-[5px] text-left text-[14px] leading-[1.3] text-fg/90 outline-none transition-colors;
+  }
+  .menu-item:hover,
+  .menu-item[data-active="true"] {
+    @apply bg-surface-hover text-fg;
+  }
+  .menu-label {
+    @apply px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fg/45;
+  }
+  .icon-btn {
+    @apply inline-flex h-[28px] w-[28px] items-center justify-center rounded-[4px] text-fg/60 transition-colors hover:bg-surface-hover hover:text-fg/90;
+  }
+  .toolbar-btn {
+    @apply inline-flex h-[28px] items-center gap-1.5 rounded-[4px] px-2 text-[14px] font-medium text-fg/75 transition-colors hover:bg-surface-hover hover:text-fg;
+  }
+  .pill {
+    @apply inline-flex max-w-full items-center gap-1 truncate rounded-[3px] px-1.5 py-[1px] text-[13px] leading-[1.35];
+  }
+}
+
+/* ================================= editor ================================= */
+.editor-body {
+  /* `--reading-scale` lo pone AppShell desde las preferencias de lectura */
+  font-size: calc(16px * var(--reading-scale, 1));
+  line-height: 1.5;
+}
+
+/* placeholder del bloque vacío */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--fg) / 0.35);
+  pointer-events: none;
+  display: inline-block;
+}
+
+/* contenteditable enfocado: sin outline, como la app original */
+[contenteditable]:focus {
+  outline: none;
+}
+
+[contenteditable] a {
+  color: rgb(var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+[contenteditable] code,
+.inline-code {
+  background: rgb(var(--fg) / 0.06);
+  color: #eb5757;
+  border-radius: 3px;
+  padding: 0.2em 0.35em;
+  font-size: 0.86em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.dark [contenteditable] code,
+.dark .inline-code {
+  color: #ff7369;
+}
+
+[contenteditable] mark {
+  background: #fbf3db;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.dark [contenteditable] mark {
+  background: #4a3f1f;
+}
+
+/* Títulos con tracking negativo, como en el original */
+.block-h1 {
+  font-size: 1.875rem;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-top: 1.4em;
+}
+.block-h2 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin-top: 1.2em;
+}
+.block-h3 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  margin-top: 0.8em;
+}
+
+/* animación de entrada de menús */
+.pop-in {
+  animation: popIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 100ms ease-out;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* el handle de arrastre no debe capturar el texto del bloque */
+.drag-handle {
+  cursor: grab;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* caret más fino y consistente */
+.caret-accent {
+  caret-color: rgb(var(--fg));
+}
+
+/* ==========================================================================
+   Papel de lectura
+   Se aplican sobre el contenedor con scroll, no sobre <html>: el chrome de la
+   app (sidebar, barra superior) conserva su tema aunque el papel sea sepia o
+   negro. Como todos los colores son variables, basta con redefinirlas.
+   ========================================================================== */
+[data-paper="sepia"] {
+  --surface: 251 240 221;
+  --surface-side: 246 235 214;
+  --surface-hover: 240 227 203;
+  --surface-active: 233 218 190;
+  --surface-pop: 253 246 233;
+  --fg: 62 48 34;
+  --fg-soft: 92 74 54;
+  --fg-muted: 124 104 81;
+  --fg-faint: 158 138 113;
+  --line: 233 216 188;
+}
+
+[data-paper="gray"] {
+  --surface: 233 233 231;
+  --surface-side: 227 227 225;
+  --surface-hover: 219 219 216;
+  --surface-active: 210 210 206;
+  --surface-pop: 240 240 238;
+  --fg: 40 40 38;
+  --fg-soft: 66 66 62;
+  --fg-muted: 104 104 100;
+  --fg-faint: 140 140 136;
+  --line: 214 214 210;
+}
+
+[data-paper="black"] {
+  --surface: 21 21 21;
+  --surface-side: 27 27 27;
+  --surface-hover: 36 36 36;
+  --surface-active: 46 46 46;
+  --surface-pop: 32 32 32;
+  --fg: 235 235 235;
+  --fg-soft: 208 208 208;
+  --fg-muted: 152 152 152;
+  --fg-faint: 116 116 116;
+  --line: 46 46 46;
+}
+
+/* En modo lectura el chrome de edición desaparece, pero el texto sigue vivo */
+[data-reading="true"] .reading-hide {
+  display: none !important;
+}
+[data-reading="true"] [contenteditable] {
+  caret-color: transparent;
+}
+[data-reading="true"] .editor-body {
+  line-height: 1.65;
+}
+/* el "papel" tiene un ancho de línea cómodo, como una página impresa */
+.paper-mode > div > div {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ==========================================================================
+   Barra flotante (cristal esmerilado)
+   ========================================================================== */
+.glass {
+  background-color: rgb(var(--surface-pop) / 0.78);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgb(var(--fg) / 0.09);
+  box-shadow:
+    0 0 0 1px rgb(var(--fg) / 0.02),
+    0 2px 6px rgb(15 15 15 / 0.08),
+    0 10px 30px rgb(15 15 15 / 0.14);
+}
+
+/* Sin soporte de backdrop-filter, un fondo opaco sigue siendo legible */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background-color: rgb(var(--surface-pop) / 0.98);
+  }
+}
+
+/* ==========================================================================
+   Resaltado del párrafo que se está leyendo
+   ========================================================================== */
+[data-block-id].tts-active,
+[data-tts-title].tts-active {
+  background-color: rgb(var(--accent) / 0.1);
+  border-radius: 4px;
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.1);
+  transition: background-color 140ms ease;
+}
+
+/* ==========================================================================
+   Controles de rango (velocidad, tono, volumen, duraciones)
+   ========================================================================== */
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--fg) / 0.16);
+  outline: none;
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(var(--fg));
+  box-shadow: 0 0 0 3px rgb(var(--surface-pop));
+  cursor: pointer;
+}
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: rgb(var(--fg));
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Accesibilidad: respetar "reducir movimiento"
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .pop-in,
+  .fade-in {
+    animation: none !important;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
