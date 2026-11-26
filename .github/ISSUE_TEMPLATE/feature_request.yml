@@ -1,0 +1,33 @@
+name: Proponer una mejora
+description: Una idea para que Nook haga algo que hoy no hace
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: ¿Qué problema resuelve?
+      description: Describí la situación concreta, no la solución.
+      placeholder: 'Cuando escribo notas largas, pierdo el hilo de dónde estaba...'
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Tu propuesta
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas que consideraste
+  - type: checkboxes
+    id: reglas
+    attributes:
+      label: Compatibilidad con las reglas del proyecto
+      options:
+        - label: No requiere dependencias de UI nuevas
+          required: true
+        - label: No requiere assets externos (fuentes, CDN, imágenes remotas)
+          required: true
+        - label: Funciona sin conexión
+          required: true

@@ -1,5 +1,13 @@
 # Nook — workspace tipo Notion
 
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![Desktop](https://github.com/OWNER/REPO/actions/workflows/desktop.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/desktop.yml)
+[![Release](https://img.shields.io/github/v/release/OWNER/REPO?label=release)](https://github.com/OWNER/REPO/releases/latest)
+[![Demo](https://img.shields.io/badge/demo-probar%20en%20el%20navegador-2ea44f)](https://OWNER.github.io/REPO/)
+[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](./LICENSE)
+
+![Nook en modo claro](./docs/capturas/01-inicio-claro.png)
+
 Clon funcional de la app de Notion (no de su web): **editor de bloques, bases de
 datos con tres vistas, páginas anidadas, favoritos, papelera, ⌘K y modo oscuro**
 — y, desde la versión 0.2, una capa completa de **lectura y foco**:
@@ -9,9 +17,21 @@ papel, mapas mentales, Pomodoro compartido e importación/exportación de archiv
 Next.js 15 (App Router) + React 19 + TypeScript + Tailwind + Zustand.
 **Cero dependencias de UI, cero assets externos, cero tipografías de terceros.**
 
+> ### Descargar
+>
+> | | Dónde | Qué es |
+> |---|---|---|
+> | 🪟 **Windows** | [Releases → `Nook-*-portable.exe`](https://github.com/OWNER/REPO/releases/latest) | app de escritorio, 78 MB, no instala nada |
+> | 🌐 **Cualquier sistema** | [Demo en GitHub Pages](https://OWNER.github.io/REPO/) | la misma app en el navegador, sin descargar |
+> | 🧑‍💻 **Código** | `git clone` + `npm install` + `npm run dev` | ver [Arrancar](#arrancar) |
+>
+> Windows SmartScreen advierte la primera vez porque el `.exe` no está firmado con
+> un certificado de código: *Más información → Ejecutar de todas formas*. Podés
+> comprobarlo compilándolo vos mismo (`cd desktop && npm run build:win`).
+>
 > Análisis de la interfaz, evidencia y qué se replicó exactamente: **[ANALISIS.md](./ANALISIS.md)**
 > Mapa de qué funciones de OpenHub se integraron y cuáles no: **[docs/OPENHUB.md](./docs/OPENHUB.md)**
-> Cómo empaquetarlo como app de escritorio: **[docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md)**
+> Cómo se empaqueta como app de escritorio (Electron): **[docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md)**
 > Subirlo a GitHub sin sorpresas: **[docs/GITHUB.md](./docs/GITHUB.md)**
 > Capturas reales generadas con Chromium headless: **[docs/capturas](./docs/capturas)**
 
@@ -204,15 +224,15 @@ mi-app/
 │   ├── markdown.ts           Markdown ⇄ bloques, contornos, exportar HTML/MD
 │   ├── mindmap.ts            árbol + layout tidy (puro)
 │   └── utils.ts              árbol de páginas, fechas, paleta, descargas
-├── src-tauri/                andamiaje de escritorio (Cargo, conf, permisos, íconos)
-├── .github/workflows/        ci.yml (build web) · desktop.yml (.exe/.msi)
+├── desktop/                  app de escritorio: main.cjs (Electron) + config de electron-builder
+├── .github/workflows/        ci.yml (build web) · desktop.yml (.exe)
 ├── scripts/
 │   ├── capturas.mjs          17 capturas + verificación de runtime
 │   └── export-static.mjs     build:static con la variable de entorno
 └── docs/
     ├── capturas/             PNGs generados por ese script
     ├── OPENHUB.md            qué se integró del spec y qué no, con motivos
-    └── EMPAQUETADO.md        guía para envolverlo en Tauri v2 (escritorio)
+    └── EMPAQUETADO.md        cómo se arma el .exe con Electron y qué está verificado
 ```
 
 ---
@@ -229,9 +249,11 @@ porque `upload-artifact` **ignora archivos ocultos desde la v4.4** y `.next`
 empieza con punto: eso producía el warning `No files were found with the provided
 path: .next`.
 
-**`desktop.yml`** — manual (*Actions → desktop → Run workflow*). Compila Rust en
-`windows-latest` y deja el **`.msi` y el `.exe`** en el artifact `nook-windows`.
-Tarda ~10-15 min la primera vez. Ver [docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md).
+**`desktop.yml`** — se dispara solo al cambiar `desktop/**`, la UI o el build
+estático (también manual: *Actions → desktop → Run workflow*). Corre en
+`windows-latest`, ejecuta `electron-builder` y deja el **`.exe` portable y el
+instalador** en el artifact `nook-windows`. Tarda ~6-8 min. Ver
+[docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md).
 
 Ninguno necesita secretos ni variables de entorno.
 
@@ -255,29 +277,49 @@ la barra. En una máquina con voces reales el motor usa las del sistema.
 
 ---
 
-## Llevarlo a GitHub con GitHub Desktop
+## Publicarlo en GitHub y compartirlo
 
-Guía completa con los tres caminos y diagnóstico de fallos: **[docs/GITHUB.md](./docs/GITHUB.md)**.
+Guía paso a paso (repo, demo, release y checklist previo a invitar gente):
+**[docs/GITHUB.md](./docs/GITHUB.md)**.
 
-1. GitHub Desktop → **File → Add Local Repository…** → elegí la carpeta `nook`.
-2. Como todavía no es un repo, te va a ofrecer **"create a repository"** →
-   aceptá. (El `.gitignore` ya excluye `node_modules`, `.next`, etc.)
-3. Poné un nombre (`nook`), dejá la ruta, **Create Repository**.
-4. **Commit to main** con el mensaje que quieras → **Publish repository**.
-5. Si lo vas a desplegar: importá el repo en Vercel/Netlify. Es un proyecto Next
-   estándar — build `npm run build`, output `.next`, sin variables de entorno.
+El resumen:
 
-**Para bajar el instalador de Windows:** el andamiaje de Tauri ya está en
-`src-tauri/` — Actions → **desktop** → *Run workflow* → Artifacts →
-`nook-windows`. Detalles y diagnóstico en
-**[docs/EMPAQUETADO.md](./docs/EMPAQUETADO.md)**.
+1. **Crear el repo vacío** en GitHub (público, sin README ni .gitignore).
+2. **Push** del proyecto — con GitHub Desktop (*File → Add Local Repository… →
+   Publish repository*) o con `git remote add origin … && git push -u origin main`.
+3. **Settings → Pages → Source: GitHub Actions** para publicar la demo. Queda en
+   `https://OWNER.github.io/REPO/`.
+4. **Taggear** para publicar la versión descargable:
 
-> Si arrancás desde el `.zip`: descomprimí, abrí la carpeta `nook` en GitHub
-> Desktop y seguí los pasos de arriba. El zip **no** incluye `node_modules`, ni
-> `.next`, ni `.git`: `npm install` los regenera y el repo lo crea GitHub
-> Desktop.
+   ```bash
+   git tag v0.2.2 && git push origin v0.2.2
+   ```
+
+   El workflow **release** compila el `.exe` y lo adjunta a
+   `https://github.com/OWNER/REPO/releases/latest`. **Ese es el enlace que se
+   comparte**: cualquiera lo baja sin cuenta y sin pasar por Actions.
+
+5. Reemplazá los `OWNER/REPO` de este README, `CHANGELOG.md` y las plantillas de
+   `.github/ISSUE_TEMPLATE/` por tu usuario y tu repo.
+
+> Si arrancás desde el `.zip`: descomprimí, abrí la carpeta en GitHub Desktop y
+> seguí los pasos. El zip **no** incluye `node_modules`, `out/`, `desktop/release/`
+> ni `.git`: `npm install` y `npm run build:static` los regeneran.
 
 ---
+
+## Comunidad
+
+- **Bugs y propuestas:** usá las plantillas de issues del repo.
+- **Cómo contribuir:** [CONTRIBUTING.md](./CONTRIBUTING.md) (mapa del código,
+  contrato del store, recetas y reglas del proyecto).
+- **Convivencia:** [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
+- **Seguridad:** [SECURITY.md](./SECURITY.md) — reportes privados, no en issues.
+- **Historial de versiones:** [CHANGELOG.md](./CHANGELOG.md).
+- **Publicar tu propio fork o release:** [docs/GITHUB.md](./docs/GITHUB.md).
+
+Licencia [MIT](./LICENSE): podés usarlo, modificarlo y redistribuirlo citando el
+copyright.
 
 ## Privacidad
 

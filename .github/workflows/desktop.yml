@@ -1,54 +1,85 @@
 name: desktop
 
-# Este workflow SÍ produce el .exe (y el .msi). Es manual a propósito: compilar
-# Rust tarda ~10-15 min la primera vez, así que no conviene atarlo a cada push.
+# Compila la app de escritorio (Electron) y deja el .exe como artifact.
 #
-#   GitHub → Actions → "desktop" → Run workflow
+# Se dispara solo cuando cambia algo del empaquetado o de la UI, y también a mano
+# desde la pestaña Actions ("Run workflow").
 #
-# Al terminar, el instalador queda en Artifacts → nook-windows.
-#
-# ⚠️ No se pudo verificar en el entorno donde se escribió (no hay Rust ni
-# Windows ahí). Si algo falla, el log dice en qué paso; los candidatos habituales
-# son el ícono (.ico) y la versión del CLI de Tauri.
+# Resultado: Actions → run "desktop" → sección "Artifacts" al final de la página
+#            → nook-windows → Nook-<version>-portable.exe + Nook-<version>-setup.exe
+
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'next.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/export-static.mjs'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
+    name: Windows x64 (.exe)
     runs-on: windows-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+      - name: Node 22
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
-          cache: npm
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-
-      - name: Instalar dependencias del frontend
+      - name: Dependencias de la web
         run: npm ci
 
-      # El CLI se instala sólo en el runner: así `package.json` no cambia y el
-      # job `web` sigue usando `npm ci` contra el lockfile intacto.
-      - name: Instalar el CLI de Tauri
-        run: npm i -D @tauri-apps/cli@^2
+      - name: Export estático (genera out/)
+        run: npm run build:static
 
-      - name: Compilar instaladores
-        run: npx tauri build
+      - name: Dependencias del escritorio
+        working-directory: desktop
+        run: npm ci
 
-      - name: Publicar instaladores
+      - name: Compilar .exe (portable + instalador)
+        working-directory: desktop
+        run: npm run build:win
+        env:
+          # Sin certificado de firma: el .exe sale sin firmar (SmartScreen avisa
+          # la primera vez). Si algún día hay certificado, se configuran
+          # CSC_LINK / CSC_KEY_PASSWORD como secrets.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verificar que los binarios existen
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          Get-ChildItem release -Filter *.exe | Format-Table Name, Length
+          if (-not (Get-ChildItem release -Filter *.exe)) {
+            Write-Error 'No se generó ningún .exe'
+            exit 1
+          }
+
+      - name: Subir artifacts
         uses: actions/upload-artifact@v6
         with:
           name: nook-windows
-          path: |
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
+          path: desktop/release/*.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

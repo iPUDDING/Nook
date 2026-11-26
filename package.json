@@ -1,6 +1,6 @@
 {
   "name": "nook",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Workspace tipo Notion: editor de bloques, bases de datos, sidebar de paginas. Next.js + Tailwind.",
   "scripts": {
@@ -28,5 +28,24 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2"
+  },
+  "license": "MIT",
+  "author": "Nook contributors",
+  "keywords": [
+    "notion",
+    "notion-clone",
+    "notes",
+    "block-editor",
+    "electron",
+    "nextjs",
+    "typescript",
+    "text-to-speech",
+    "productivity",
+    "pkm"
+  ],
+  "homepage": "https://github.com/OWNER/REPO#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/REPO.git"
   }
 }

@@ -1,2 +1,15 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normaliza finales de línea: evita diffs gigantes al clonar en Windows.
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.zip binary
+
+# Lockfiles: sin diff en pull requests
+package-lock.json -diff linguist-generated=true
+
+# La carpeta docs/capturas es documentación visual, no código
+docs/capturas/* linguist-documentation

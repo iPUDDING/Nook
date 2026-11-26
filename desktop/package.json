@@ -1,0 +1,70 @@
+{
+  "name": "nook-desktop",
+  "productName": "Nook",
+  "version": "0.2.2",
+  "description": "Nook — espacio de trabajo personal: notas, lectura en voz alta, mapas mentales y Pomodoro.",
+  "author": "Nook",
+  "license": "MIT",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "web": "node scripts/build-web.mjs",
+    "start": "npm run web && electron .",
+    "build:win": "npm run web && electron-builder --win portable nsis --x64",
+    "build:linux": "npm run web && electron-builder --linux dir"
+  },
+  "devDependencies": {
+    "electron": "38.2.2",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.nook.app",
+    "productName": "Nook",
+    "copyright": "Copyright © 2026 Nook",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../out",
+        "to": "web"
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        },
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Nook-${version}-portable.exe",
+      "requestExecutionLevel": "user"
+    },
+    "nsis": {
+      "artifactName": "Nook-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nook"
+    },
+    "linux": {
+      "icon": "resources/icon-1024.png",
+      "category": "Office",
+      "target": ["dir"]
+    }
+  }
+}

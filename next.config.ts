@@ -3,11 +3,25 @@ import type { NextConfig } from "next";
 /**
  * `BUILD_TARGET=static` produce un sitio 100 % estático en `out/`.
  *
- * Hace falta porque de eso dependen dos cosas: el .exe (Tauri sirve archivos,
- * no un servidor Node) y el artifact descargable de CI. En el uso normal —dev y
- * `npm run build` para Vercel— la app sigue funcionando igual que siempre.
+ * Hace falta porque de eso dependen tres cosas: el .exe de Electron (sirve
+ * archivos, no un servidor Node), el artifact descargable de CI y la demo en
+ * GitHub Pages. En el uso normal —dev y `npm run build` para Vercel— la app
+ * sigue funcionando igual que siempre.
  */
 const isStatic = process.env.BUILD_TARGET === "static";
+
+/**
+ * `BASE_PATH=/nook` prefija todas las rutas (`/nook/_next/...`).
+ *
+ * Sólo hace falta para GitHub Pages de proyecto (`usuario.github.io/nook/`),
+ * donde el sitio NO vive en la raíz del dominio. En el `.exe`, en `next dev` y
+ * en un hosting en la raíz del dominio va vacío.
+ */
+const rawBasePath = (process.env.BASE_PATH ?? "").trim();
+const basePath =
+  rawBasePath && rawBasePath !== "/"
+    ? `/${rawBasePath.replace(/^\/+|\/+$/g, "")}`
+    : "";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -17,6 +31,7 @@ const nextConfig: NextConfig = {
         output: "export" as const,
         // el export estático no tiene el optimizador de imágenes de Next
         images: { unoptimized: true },
+        ...(basePath ? { basePath, assetPrefix: basePath } : {}),
       }
     : {}),
 
