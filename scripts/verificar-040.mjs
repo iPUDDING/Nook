@@ -12,6 +12,7 @@
 
 import fs from 'node:fs';
 import { chromium } from 'playwright';
+import { capturar } from './_captura.mjs';
 
 const BASE = process.argv[2] ?? 'http://127.0.0.1:4321';
 const DEMO = 'NOOK-DEMA-KPR2-X6QT';
@@ -56,7 +57,7 @@ if (estadoInicial.titulo && estadoInicial.activo && estadoInicial.habilitadas ==
   mal('suscripción activa de fábrica', JSON.stringify(estadoInicial));
 }
 
-await page.screenshot({ path: '/home/user/nook-040-plan.png' });
+await capturar(page, 'nook-040-plan.png');
 
 /* ----------------------------- clave inválida ----------------------------- */
 const escribirClave = async (clave) => {

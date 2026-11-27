@@ -48,7 +48,13 @@ jobs:
       - name: Evitar el procesado de Jekyll
         run: touch out/.nojekyll
 
+      # `enablement: true` crea el sitio de Pages por API si todavía no existe.
+      # Sin esto, un repo recién subido falla con "Get Pages site failed / Not
+      # Found" y parece un error de compilación cuando en realidad es un ajuste
+      # que nunca se hizo (Settings → Pages → Source: GitHub Actions).
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

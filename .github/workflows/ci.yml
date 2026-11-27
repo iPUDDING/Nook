@@ -85,30 +85,23 @@ jobs:
             sleep 1
           done
 
+      # Se corren todas las suites aunque una falle: con `set -e` la primera que
+      # rompe corta el job y las siguientes nunca se ejecutan, así que cada push
+      # descubre un problema nuevo en vez de todos.
       - name: Verificaciones (funcionalidad, suscripción y seguridad)
         run: |
-          node scripts/verificar-030.mjs http://127.0.0.1:4321
-          node scripts/verificar-040.mjs http://127.0.0.1:4321
-          node scripts/verificar-seguridad.mjs http://127.0.0.1:4321
-          node scripts/verificar-movil.mjs http://127.0.0.1:4321
-          node scripts/verificar-modales.mjs http://127.0.0.1:4321
-          node scripts/verificar-lectura.mjs http://127.0.0.1:4321
-          node scripts/verificar-historial.mjs http://127.0.0.1:4321
-          node scripts/verificar-carpetas.mjs http://127.0.0.1:4321
-          node scripts/verificar-vistas.mjs http://127.0.0.1:4321
-          node scripts/verificar-iconos.mjs http://127.0.0.1:4321
-          node scripts/verificar-mover.mjs http://127.0.0.1:4321
-          node scripts/verificar-calendario.mjs http://127.0.0.1:4321
-          node scripts/verificar-arrastrar.mjs http://127.0.0.1:4321
-          node scripts/verificar-arrastrar-paginas.mjs http://127.0.0.1:4321
-          node scripts/verificar-vistas-config.mjs http://127.0.0.1:4321
-          node scripts/verificar-busqueda.mjs http://127.0.0.1:4321
-          node scripts/verificar-bloqueo.mjs http://127.0.0.1:4321
-          node scripts/verificar-copias.mjs http://127.0.0.1:4321
-          node scripts/verificar-zoom.mjs http://127.0.0.1:4321
-          node scripts/verificar-repeticion.mjs http://127.0.0.1:4321
-          node scripts/verificar-propiedades.mjs http://127.0.0.1:4321
-          node scripts/verificar-busqueda-global.mjs http://127.0.0.1:4321
+          fallos=0
+          total=0
+          for f in scripts/verificar-*.mjs; do
+            case "$f" in *desktop*) continue ;; esac
+            total=$((total+1))
+            echo ""
+            echo "──────── $f"
+            node "$f" http://127.0.0.1:4321 || fallos=$((fallos+1))
+          done
+          echo ""
+          echo "Suites corridas: $total · con problemas: $fallos"
+          test "$fallos" -eq 0
 
       - name: Capturas y logs si algo falla
         if: failure()

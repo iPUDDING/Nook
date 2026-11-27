@@ -43,7 +43,8 @@ escribir(`Sistema     : ${os.type()} ${os.release()} · ${process.platform} ${pr
 escribir(`Node        : ${process.version}`);
 escribir(`Raíz        : ${raiz}`);
 
-const npm = correr(process.platform === "win32" ? "npm.cmd" : "npm", ["--version"]);
+const bin = (rel) => path.join(raiz, "node_modules", rel);
+const npm = correr(process.execPath, ["--version"]);
 escribir(`npm         : ${npm.ok ? npm.salida : "no encontrado"}`);
 
 // ---------------------------------------------------------------- requisitos
@@ -69,13 +70,13 @@ if (!existe("node_modules/next")) {
 
 if (!process.argv.includes("--rapido")) {
   escribir("");
-  escribir("=== npx tsc --noEmit ===");
-  const tipos = correr(process.platform === "win32" ? "npx.cmd" : "npx", ["tsc", "--noEmit"]);
+  escribir("=== tsc --noEmit ===");
+  const tipos = correr(process.execPath, [bin("typescript/bin/tsc"), "--noEmit"]);
   escribir(tipos.ok ? "sin errores de tipos" : tipos.salida.slice(0, 8000));
 
   escribir("");
-  escribir("=== npm run build ===");
-  const build = correr(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"]);
+  escribir("=== next build ===");
+  const build = correr(process.execPath, [bin("next/dist/bin/next"), "build"]);
   escribir(build.salida.slice(0, 12000));
 
   const archivo = path.join(raiz, "diagnostico.txt");

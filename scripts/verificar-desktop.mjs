@@ -12,6 +12,7 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { capturar } from './_captura.mjs';
 
 const bin = process.argv[2];
 if (!bin) {
@@ -21,7 +22,6 @@ if (!bin) {
 
 const DISPLAY = ':99';
 const PORT = 9222;
-const SHOT = '/home/user/nook-desktop-prueba.png';
 
 const env = { ...process.env, DISPLAY };
 delete env.ELECTRON_RUN_AS_NODE;
@@ -101,7 +101,7 @@ try {
     })(),
   }));
 
-  await page.screenshot({ path: SHOT });
+  await capturar(page, 'nook-desktop-prueba.png');
 
   console.log('URL       :', datos.url);
   console.log('Título    :', datos.titulo);

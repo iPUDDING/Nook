@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import { chromium } from 'playwright';
+import { capturar } from './_captura.mjs';
 
 const BASE = process.argv[2] ?? 'http://127.0.0.1:4321';
 const resultados = [];
@@ -609,7 +610,7 @@ if (punteros.expanded === 0 && punteros.posiciones === 0 && punteros.huerfanos =
   mal('papelera vaciada sin punteros huérfanos', JSON.stringify(punteros));
 }
 
-await page.screenshot({ path: '/home/user/nook-030-lectura.png' });
+await capturar(page, 'nook-030-lectura.png');
 
 /* -------------------------------- cierre ----------------------------------- */
 const consolaLimpia = errores.length === 0;

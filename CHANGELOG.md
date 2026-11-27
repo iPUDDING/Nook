@@ -4,6 +4,43 @@ Todas las versiones notables del proyecto. Formato basado en
 [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/).
 
+## [0.14.2] — 2026-11-27
+
+Los tres bloqueos que quedaban en GitHub Actions, arreglados donde estaban: dos
+eran del código de build y uno de configuración del repo. Sin funciones nuevas.
+
+### Corregido
+
+- **Windows no podía arrancar el build** (`Error: spawnSync npx.cmd EINVAL`).
+  `scripts/export-static.mjs` llamaba a `npx` con `shell: false`; en Windows `npx`
+  es un archivo por lotes y `spawnSync` no puede ejecutarlo así. Ahora se llama al
+  CLI de Next con `node` directamente (`node node_modules/next/dist/bin/next build`),
+  que funciona igual en Windows, macOS, Linux y en Actions. Ese fallo tumbaba el
+  workflow `desktop`, o sea el `.exe`.
+- **Las capturas de las suites escribían en `/home/user/…`**. En el runner ese
+  directorio no existe: Playwright lanzaba `ENOENT` y la excepción cortaba la
+  suite **antes** del resumen, así que el job quedaba en rojo sin decir qué
+  verificaciones habían pasado. Nuevo `scripts/_captura.mjs`: guarda en
+  `test-results/` (relativo al repo, se crea si falta), avisa si no puede y la
+  suite sigue. Una captura ya no puede decidir si una prueba pasa.
+- **`pages` fallaba con `Get Pages site failed / Not Found`** cuando el sitio de
+  Pages nunca se habilitó. `actions/configure-pages@v5` ahora corre con
+  `enablement: true` y lo crea por API.
+
+### Cambiado
+
+- El job `e2e` del CI **ya no se detiene en la primera suite que falla**: las corre
+  todas y al final informa «suites corridas / con problemas». Antes, con `set -e`,
+  cada push descubría un problema nuevo en lugar de todos.
+- `scripts/diagnostico.mjs` invoca `tsc` y `next` con `node` en vez de `npx`, por el
+  mismo motivo que el punto anterior.
+
+### Verificación
+
+`tsc` limpio, build de producción, export estático, las **265 verificaciones de
+las veintidós suites** corridas con el mismo bucle que usa el CI, y el `.exe`
+recompilado. Todo en verde.
+
 ## [0.14.1] — 2026-11-27
 
 Arreglo de compilación: **el zip no se podía instalar en una máquina limpia**.
