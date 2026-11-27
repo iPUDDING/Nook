@@ -4,6 +4,27 @@ Todas las versiones notables del proyecto. Formato basado en
 [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/).
 
+## [0.14.4] — 2026-11-27
+
+`Deploy` en «skipped» era el comportamiento correcto, pero no se entendía. Ahora
+se explica solo, con el enlace para arreglarlo.
+
+### Cambiado
+
+- El aviso del workflow **pages** incluye el enlace directo a
+  `https://github.com/<owner>/<repo>/settings/pages`, en el `::warning` del log y
+  como link clickeable en el resumen del run. Antes decía «Settings → Pages», que
+  obliga a buscar el menú.
+- El job `deploy` se llama **«Deploy (se saltea a propósito si Pages no está
+  habilitado)»**: un «skipped» deja de parecer un error a medio resolver.
+
+### Verificación
+
+Probadas las dos ramas del paso de control: respuesta `401` → `activo=false`,
+warning con enlace, resumen escrito y salida `0`; respuesta `200` simulada →
+`activo=true` y sin resumen. `yaml.safe_load` limpio, `tsc`, build estático y las
+**265 verificaciones de las veintidós suites**.
+
 ## [0.14.3] — 2026-11-27
 
 El último rojo de Actions: **`pages` ya no falla por un ajuste que sólo puede

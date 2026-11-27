@@ -55,15 +55,16 @@ jobs:
             exit 0
           fi
 
+          ajustes="https://github.com/${{ github.repository }}/settings/pages"
           echo "activo=false" >> "$GITHUB_OUTPUT"
-          echo "::warning title=Pages sin habilitar::Falta un ajuste de una sola vez: Settings → Pages → Build and deployment → Source: GitHub Actions. No se publica la demo, pero nada más se rompe."
+          echo "::warning title=Pages sin habilitar::Falta un ajuste de una sola vez: elegí GitHub Actions como Source en $ajustes. No se publica la demo, pero nada más se rompe."
           {
             echo "### Demo web: falta un ajuste de una sola vez"
             echo ""
             echo "El sitio de Pages de este repositorio todavía no existe (la API devolvió \`$estado\`), así que no hay dónde publicar."
             echo ""
-            echo "1. **Settings → Pages → Build and deployment**"
-            echo "2. En **Source**, elegí **GitHub Actions**."
+            echo "1. Abrí **[Settings → Pages]($ajustes)**."
+            echo "2. En **Build and deployment → Source**, elegí **GitHub Actions**."
             echo "3. Volvé a correr este workflow."
             echo ""
             echo "Mientras tanto no se pierde nada: el sitio estático se compila igual en"
@@ -108,7 +109,7 @@ jobs:
           path: out
 
   deploy:
-    name: Deploy
+    name: Deploy (se saltea a propósito si Pages no está habilitado)
     needs: build
     # Si el job de arriba se salteó porque Pages no está habilitado, tampoco se
     # intenta desplegar: un "skipped" es más honesto que un rojo sin motivo.
