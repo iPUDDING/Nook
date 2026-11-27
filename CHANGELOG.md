@@ -4,6 +4,40 @@ Todas las versiones notables del proyecto. Formato basado en
 [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/).
 
+## [0.14.1] — 2026-11-27
+
+Arreglo de compilación: **el zip no se podía instalar en una máquina limpia**.
+Sin funciones nuevas.
+
+### Corregido
+
+- **`package-lock.json` apuntaba a `autoprefixer@10.9.0`, una versión que no
+  existe en npm** (la última es la 10.7.0). En la máquina donde se generó el
+  lockfile funcionaba porque el tarball estaba en caché; en GitHub Actions, que
+  instala en frío, `npm ci` moría con `404 Not Found` y tumbaba los tres
+  workflows (`build`, `desktop` y `pages`) antes de compilar nada.
+- **`desktop/package-lock.json` tenía cuatro versiones fantasma `0.4.3`**
+  (`asynckit`, `json-schema-traverse`, `pe-library`, `@malept/flatpak-bundler`).
+  Se regeneró contra el registro real: 0.4.0, 0.4.1, 0.4.1 y 0.4.0.
+- Los dos lockfiles se regeneraron desde cero con `npm install --package-lock-only`,
+  así que fijan versiones que existen.
+
+### Añadido
+
+- **`scripts/verificar-lockfile.mjs`**: pide con `HEAD` las 535 URLs de tarball
+  de los dos lockfiles y falla si alguna no devuelve 200. Enganchado como primer
+  paso de `ci.yml` y de `desktop.yml`, antes de instalar: si vuelve a entrar una
+  versión inexistente, el error dice qué paquete y qué versión, no «npm ci falló».
+- **`scripts/diagnostico.mjs`**: junta sistema, versión de Node y npm, presencia de
+  `node_modules` y el log de `tsc` y del build en `diagnostico.txt`, para poder
+  reportar un fallo de compilación ajeno con datos en vez de con «no compila».
+
+### Verificación
+
+`npm ci` en frío (caché vacía) en la raíz y en `desktop/`, `tsc` limpio, build de
+producción, export estático, las **265 verificaciones de las veintidós suites** y
+el `.exe` compilado de nuevo. Todo en verde.
+
 ## [0.14.0] — 2026-11-27
 
 Lo que los usuarios le piden a la app de referencia, cuarta tanda:

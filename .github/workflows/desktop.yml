@@ -47,6 +47,11 @@ jobs:
             package-lock.json
             desktop/package-lock.json
 
+      # Mismo control que en ci.yml: el job de Windows instala en frío, así que
+      # un tarball fantasma rompe el .exe antes de compilar nada.
+      - name: El lockfile apunta a versiones que existen
+        run: node scripts/verificar-lockfile.mjs
+
       - name: Dependencias de la web
         run: npm ci
 
