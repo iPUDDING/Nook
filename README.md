@@ -375,7 +375,10 @@ El resumen:
 2. **Push** del proyecto — con GitHub Desktop (*File → Add Local Repository… →
    Publish repository*) o con `git remote add origin … && git push -u origin main`.
 3. **Settings → Pages → Source: GitHub Actions** para publicar la demo. Queda en
-   `https://OWNER.github.io/REPO/`.
+   `https://OWNER.github.io/REPO/`. Es un paso manual y de una sola vez: el token
+   del workflow no tiene permiso para crear el sitio de Pages, así que si falta,
+   el workflow **pages** avisa en el resumen y se saltea la publicación en vez de
+   fallar.
 4. **Taggear** para publicar la versión descargable:
 
    ```bash

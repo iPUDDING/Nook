@@ -1,6 +1,6 @@
 {
   "name": "nook",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "private": true,
   "description": "Workspace tipo Notion: editor de bloques, bases de datos, sidebar de paginas. Next.js + Tailwind.",
   "scripts": {

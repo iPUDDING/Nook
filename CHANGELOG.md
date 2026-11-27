@@ -4,6 +4,35 @@ Todas las versiones notables del proyecto. Formato basado en
 [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y
 [versionado semántico](https://semver.org/lang/es/).
 
+## [0.14.3] — 2026-11-27
+
+El último rojo de Actions: **`pages` ya no falla por un ajuste que sólo puede
+hacer una persona**. Sin funciones nuevas.
+
+### Corregido
+
+- **`enablement: true` en `configure-pages` era la solución equivocada.** Ese flag
+  intenta crear el sitio de Pages con el `GITHUB_TOKEN`, y GitHub lo rechaza con
+  `Resource not accessible by integration`: crear el sitio requiere permisos de
+  administración que el token del workflow nunca tiene. El resultado era un job en
+  rojo que en realidad compilaba bien, y un `deploy` en «skipped» que parecía un
+  segundo problema.
+- **Ahora el workflow pregunta antes de intentar.** Un primer paso consulta
+  `GET /repos/{owner}/{repo}/pages`:
+  - devuelve `200` → se publica como siempre;
+  - devuelve otra cosa → `::warning` con la instrucción exacta, resumen en la
+    página del run («Settings → Pages → Build and deployment → Source: GitHub
+    Actions») y el resto de los pasos, incluido `deploy`, se saltean.
+  El job termina **en verde**: la falta de un ajuste de configuración no es un
+  error de compilación y no debe verse como uno.
+
+### Verificación
+
+Probado el paso con las dos ramas: token inválido (`401`) → `activo=false`,
+resumen escrito y salida `0`; respuesta `200` simulada → `activo=true` y sin
+resumen. `yaml.safe_load` limpio en los cuatro workflows, `tsc`, build estático y
+las **265 verificaciones de las veintidós suites**.
+
 ## [0.14.2] — 2026-11-27
 
 Los tres bloqueos que quedaban en GitHub Actions, arreglados donde estaban: dos

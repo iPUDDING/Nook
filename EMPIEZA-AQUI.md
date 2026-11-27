@@ -70,7 +70,8 @@ npm start
 Guía completa: **[docs/GITHUB.md](./docs/GITHUB.md)**. Los dos pasos que importan:
 
 1. **Demo pública** — Settings → Pages → Source: *GitHub Actions*. La web queda en
-   `https://OWNER.github.io/REPO/`, sin que nadie tenga que descargar nada.
+   `https://OWNER.github.io/REPO/`, sin que nadie tenga que descargar nada. Si te
+   olvidás, no pasa nada: el workflow **pages** lo avisa y no falla.
 2. **Descarga del `.exe`** — taggeá una versión:
 
    ```bash

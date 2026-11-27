@@ -3,8 +3,14 @@ name: pages
 # Publica la demo web en GitHub Pages para que cualquiera pueda probar Nook
 # desde el navegador, sin descargar nada.
 #
-# Requisito (una sola vez): Settings → Pages → Build and deployment →
+# Requisito (una sola vez, y sólo lo puede hacer una persona con permisos de
+# administración del repo): Settings → Pages → Build and deployment →
 # Source: "GitHub Actions".
+#
+# Si ese ajuste todavía no está hecho, este workflow **no falla**: avisa en el
+# resumen y se saltea la publicación. El `GITHUB_TOKEN` no puede crear el sitio
+# de Pages (GitHub responde "Resource not accessible by integration"), así que
+# intentarlo sólo servía para pintar de rojo un job que en realidad compila bien.
 #
 # Si el repositorio se llama <usuario>.github.io, el sitio vive en la raíz del
 # dominio y NO hace falta BASE_PATH: definí la variable de repositorio
@@ -28,17 +34,61 @@ jobs:
   build:
     name: Export estático
     runs-on: ubuntu-latest
+    outputs:
+      publicar: ${{ steps.pages_on.outputs.activo }}
     steps:
+      # Pregunta a la API si el sitio existe. 200 → se publica; cualquier otra
+      # cosa → no hay dónde publicar y se explica qué hacer, sin romper el job.
+      - name: ¿Está Pages habilitado?
+        id: pages_on
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          estado=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages")
+
+          if [ "$estado" = "200" ]; then
+            echo "activo=true" >> "$GITHUB_OUTPUT"
+            echo "Pages está habilitado."
+            exit 0
+          fi
+
+          echo "activo=false" >> "$GITHUB_OUTPUT"
+          echo "::warning title=Pages sin habilitar::Falta un ajuste de una sola vez: Settings → Pages → Build and deployment → Source: GitHub Actions. No se publica la demo, pero nada más se rompe."
+          {
+            echo "### Demo web: falta un ajuste de una sola vez"
+            echo ""
+            echo "El sitio de Pages de este repositorio todavía no existe (la API devolvió \`$estado\`), así que no hay dónde publicar."
+            echo ""
+            echo "1. **Settings → Pages → Build and deployment**"
+            echo "2. En **Source**, elegí **GitHub Actions**."
+            echo "3. Volvé a correr este workflow."
+            echo ""
+            echo "Mientras tanto no se pierde nada: el sitio estático se compila igual en"
+            echo "el workflow **build** y queda como artifact \`nook-web.zip\`, listo para"
+            echo "servir en cualquier hosting."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@v5
+        if: steps.pages_on.outputs.activo == 'true'
 
       - uses: actions/setup-node@v5
+        if: steps.pages_on.outputs.activo == 'true'
         with:
           node-version: '22'
           cache: 'npm'
 
+      - name: El lockfile apunta a versiones que existen
+        if: steps.pages_on.outputs.activo == 'true'
+        run: node scripts/verificar-lockfile.mjs
+
       - run: npm ci
+        if: steps.pages_on.outputs.activo == 'true'
 
       - name: Generar out/ (con basePath del repo)
+        if: steps.pages_on.outputs.activo == 'true'
         run: npm run build:static
         env:
           # En repos de proyecto el sitio cuelga de /<repo>/. Si definiste la
@@ -46,23 +96,23 @@ jobs:
           BASE_PATH: ${{ vars.BASE_PATH || format('/{0}', github.event.repository.name) }}
 
       - name: Evitar el procesado de Jekyll
+        if: steps.pages_on.outputs.activo == 'true'
         run: touch out/.nojekyll
 
-      # `enablement: true` crea el sitio de Pages por API si todavía no existe.
-      # Sin esto, un repo recién subido falla con "Get Pages site failed / Not
-      # Found" y parece un error de compilación cuando en realidad es un ajuste
-      # que nunca se hizo (Settings → Pages → Source: GitHub Actions).
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+        if: steps.pages_on.outputs.activo == 'true'
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.pages_on.outputs.activo == 'true'
         with:
           path: out
 
   deploy:
     name: Deploy
     needs: build
+    # Si el job de arriba se salteó porque Pages no está habilitado, tampoco se
+    # intenta desplegar: un "skipped" es más honesto que un rojo sin motivo.
+    if: needs.build.outputs.publicar == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
