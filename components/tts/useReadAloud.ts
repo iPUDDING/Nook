@@ -52,6 +52,39 @@ export function useReadAloud() {
     return true;
   }, [speech]);
 
+  /**
+   * Lee empezando en un bloque concreto (menú contextual del editor).
+   *
+   * `offset` es la posición del puntero dentro del texto del bloque: se usa para
+   * arrancar en la frase que corresponde, no al principio del bloque.
+   */
+  const readFrom = useCallback(
+    (blockId: string, offset = 0) => {
+      const page = pages[selectedId];
+      if (!page) return;
+      const segments = buildSegments(page.title, visibleBlocks(page.blocks));
+      if (!segments.length) return;
+
+      let from = segments.findIndex((segment) => segment.blockId === blockId);
+      if (from < 0) from = 0;
+
+      if (offset > 0) {
+        let acumulado = 0;
+        for (let i = from; i < segments.length; i += 1) {
+          if (segments[i].blockId !== blockId) break;
+          acumulado += segments[i].text.length;
+          if (offset <= acumulado) {
+            from = i;
+            break;
+          }
+        }
+      }
+
+      speech.start(segments, page.title || "Sin título", from);
+    },
+    [pages, selectedId, speech],
+  );
+
   /** alterna: si hay algo sonando, pausa; si no, arranca la página */
   const toggleRead = useCallback(() => {
     if (speech.status === "playing") speech.pause();
@@ -59,5 +92,5 @@ export function useReadAloud() {
     else readPage();
   }, [speech, readPage]);
 
-  return { speech, readPage, readSelection, toggleRead };
+  return { speech, readPage, readSelection, readFrom, toggleRead };
 }

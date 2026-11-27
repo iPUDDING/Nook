@@ -73,6 +73,21 @@ try {
     url: location.href,
     titulo: document.title,
     bloques: document.querySelectorAll('[data-block-id]').length,
+    tablas: document.querySelectorAll('[role="table"]').length,
+    plan: (() => {
+      const st = window.__nookStore?.getState?.();
+      if (!st) return null;
+      // retención efectiva del historial, tal como la lee la app
+      const dias = st.plan.tier === 'enterprise' && st.plan.active ? null : { free: 7, pro: 30, business: 90 }[st.plan.tier] ?? 7;
+      const retencion = st.plan.active ? dias : 7;
+      return {
+        activo: st.plan.active,
+        tier: st.plan.tier,
+        miembros: st.members.length,
+        historial: retencion === null ? 'sin límite' : `${retencion} días`,
+        versiones: Object.values(st.versions ?? {}).reduce((n, l) => n + l.length, 0),
+      };
+    })(),
     texto: (document.body.innerText || '').slice(0, 160).replace(/\s+/g, ' '),
     storage: (() => {
       try {
@@ -91,11 +106,60 @@ try {
   console.log('URL       :', datos.url);
   console.log('Título    :', datos.titulo);
   console.log('Bloques   :', datos.bloques);
+  console.log('Tablas    :', datos.tablas);
+  console.log(
+    'Plan      :',
+    datos.plan?.tier,
+    datos.plan?.activo
+      ? `(activo · historial ${datos.plan?.historial ?? '?'})`
+      : '(inactivo)',
+  );
+  console.log('Miembros  :', datos.plan?.miembros, '(límite: ninguno)');
   console.log('localStorage:', datos.storage ? 'OK' : 'FALLA');
   console.log('Texto     :', datos.texto);
   console.log('Consola   :', problemas.length ? problemas : 'sin errores');
 
-  const valido = datos.bloques > 5 && datos.storage && problemas.length === 0;
+  /* --------------------- carpetas y archivos en el .exe ------------------- */
+  /**
+   * IndexedDB es lo que más riesgo tiene al empaquetar: el protocolo propio
+   * (`nook://`) y el origen del `.exe` no son los del navegador. Si esto falla,
+   * los adjuntos no existen en escritorio y hay que saberlo antes de entregar.
+   */
+  const archivos = await page.evaluate(async () => {
+    const st = window.__nookStore.getState();
+    const carpeta = st.createFolder(null, 'Carpeta de prueba');
+    const contenido = new File([new Uint8Array([137, 80, 78, 71])], 'prueba.bin', {
+      type: 'application/octet-stream',
+    });
+    const subido = await window.__nookStore.getState().addFile(contenido, carpeta);
+    // se recupera el blob para comprobar que IndexedDB funciona de verdad
+    const leido = await new Promise((resolve) => {
+      const req = indexedDB.open('nook-files');
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('blobs')) return resolve(null);
+        const get = db.transaction('blobs', 'readonly').objectStore('blobs').get(subido.file?.id ?? '');
+        get.onsuccess = () => resolve(get.result ? get.result.size : null);
+        get.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    });
+    return { subido: subido.ok, error: subido.error ?? '', tam: leido };
+  });
+
+  console.log(
+    'Archivos  :',
+    archivos.subido ? `subida OK · blob de ${archivos.tam} bytes` : `FALLÓ: ${archivos.error}`,
+  );
+
+  const valido =
+    datos.bloques > 5 &&
+    datos.tablas > 0 &&
+    datos.plan?.activo === true &&
+    datos.storage &&
+    archivos.subido === true &&
+    archivos.tam === 4 &&
+    problemas.length === 0;
   console.log(valido ? '\n✅ App de escritorio verificada' : '\n❌ Verificación fallida');
   process.exitCode = valido ? 0 : 1;
 } catch (err) {

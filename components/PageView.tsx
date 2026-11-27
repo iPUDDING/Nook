@@ -1,59 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DatabaseView from "./Database";
+import FolderView from "./FolderView";
 import Editor from "./Editor";
+import FindBar from "./FindBar";
 import Icon from "./Icon";
+import IconPicker from "./IconPicker";
+import PageIcon from "./PageIcon";
 import { MenuItem, MenuSeparator, Popover } from "./ui";
-import { requestBlockFocus, useStore } from "@/lib/store";
+import { clampZoom, requestBlockFocus, useStore } from "@/lib/store";
 import { countChars, countWords, estimateMinutes, htmlToText } from "@/lib/speech";
 import type { Page } from "@/lib/types";
-import { COVERS, COVER_BY_ID, EMOJIS, cx, relativeTime, visibleBlocks } from "@/lib/utils";
-
-function EmojiPicker({
-  open,
-  onClose,
-  onPick,
-  onRemove,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onPick: (emoji: string) => void;
-  onRemove: () => void;
-}) {
-  const [q, setQ] = useState("");
-  const list = EMOJIS.filter((e) => e.includes(q.trim()));
-  return (
-    <Popover open={open} onClose={onClose} width={264} className="left-0 top-[calc(100%+6px)] p-2">
-      <input
-        autoFocus
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar emoji…"
-        className="mb-2 w-full rounded-[4px] border border-line bg-surface px-2 py-1 text-[13px] outline-none placeholder:text-fg/35 focus:border-accent/50"
-      />
-      <div className="grid max-h-[176px] grid-cols-8 gap-0.5 overflow-y-auto">
-        {list.map((e) => (
-          <button
-            key={e}
-            type="button"
-            onClick={() => {
-              onPick(e);
-              onClose();
-            }}
-            className="flex h-[28px] w-[28px] items-center justify-center rounded-[4px] text-[17px] hover:bg-surface-hover"
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-      <MenuSeparator />
-      <MenuItem icon={<Icon name="x" size={14} />} onClick={() => { onRemove(); onClose(); }}>
-        Quitar icono
-      </MenuItem>
-    </Popover>
-  );
-}
+import { COVERS, COVER_BY_ID, cx, relativeTime, visibleBlocks } from "@/lib/utils";
 
 function CoverPicker({
   open,
@@ -94,6 +53,9 @@ function CoverPicker({
 
 export default function PageView({ page }: { page: Page }) {
   const updatePage = useStore((s) => s.updatePage);
+  const zoom = useStore((s) => s.zoom);
+  const setZoom = useStore((s) => s.setZoom);
+  const toggleLock = useStore((s) => s.toggleLock);
   const fullWidth = useStore((s) => s.fullWidth);
   const readingMode = useStore((s) => s.reading.mode);
 
@@ -106,6 +68,10 @@ export default function PageView({ page }: { page: Page }) {
     return { words, chars: countChars(text), minutes: estimateMinutes(words) };
   }, [page.blocks]);
   const [iconOpen, setIconOpen] = useState(false);
+  /** el aviso con el porcentaje aparece al cambiar el zoom y se va solo */
+  const [avisoZoom, setAvisoZoom] = useState(false);
+  /** buscar y reemplazar dentro de la página corta largo y no depende del navegador */
+  const [findOpen, setFindOpen] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
@@ -118,9 +84,94 @@ export default function PageView({ page }: { page: Page }) {
   }, [page.title, page.id, fullWidth]);
 
   const cover = COVER_BY_ID(page.cover);
+  const locked = !!page.locked;
+
+  /**
+   * Zoom con la rueda: Ctrl/⌘ + rueda sobre el contenido, como en cualquier
+   * navegador. Sin el modificador la rueda sigue desplazando, que es lo que hace
+   * el 99 % de las veces.
+   *
+   * El listener es nativo y no pasivo porque hay que frenar el zoom propio del
+   * navegador (`preventDefault`) — con `onWheel` de React, que es pasivo, el
+   * navegador agranda toda la interfaz y no se puede evitar.
+   */
+  useEffect(() => {
+    let ultimo = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const destino = e.target as HTMLElement | null;
+      if (!destino?.closest?.("[data-zoom-scope]")) return;
+      e.preventDefault();
+      const ahora = Date.now();
+      // un trackpad manda decenas de eventos por gesto: sin freno, un pellizco
+      // salta del 50 al 200 %
+      if (ahora - ultimo < 90) return;
+      ultimo = ahora;
+      const actual = useStore.getState().zoom;
+      setZoom(clampZoom(actual + (e.deltaY < 0 ? 10 : -10)));
+      setAvisoZoom(true);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [setZoom]);
+
+  // el aviso se apaga solo
+  useEffect(() => {
+    if (!avisoZoom) return;
+    const t = window.setTimeout(() => setAvisoZoom(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [avisoZoom, zoom]);
+
+  // ⌘F / Ctrl+F abre la búsqueda de la página en lugar del buscar del navegador
+  const puedeBuscar = !page.database && !page.isFolder;
+  useEffect(() => {
+    if (!puedeBuscar) return;
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [puedeBuscar]);
+
+  // cambiar de página cierra la barra: buscaría en la anterior
+  useEffect(() => {
+    setFindOpen(false);
+  }, [page.id]);
 
   return (
-    <div className="relative min-h-full">
+    <>
+      {findOpen && puedeBuscar && <FindBar page={page} onClose={() => setFindOpen(false)} />}
+      {(avisoZoom || zoom !== 100) && (
+        <div
+          data-zoom-chip
+          data-zoom-value={zoom}
+          className={cx(
+            "fixed bottom-6 left-1/2 z-30 -translate-x-1/2 rounded-full border border-line px-2.5 py-1 text-[12px] tabular-nums shadow-sm transition-opacity",
+            avisoZoom ? "opacity-100" : "opacity-0",
+            "bg-surface text-fg/70",
+          )}
+        >
+          <span className="font-medium">{zoom}%</span>
+          <button
+            type="button"
+            data-zoom-reset
+            onClick={() => setZoom(100)}
+            className="ml-2 text-fg/45 hover:text-fg/80"
+          >
+            restablecer
+          </button>
+        </div>
+      )}
+      <div
+        className="relative min-h-full"
+        data-zoom-scope
+        data-page-zoom={zoom}
+        style={{ zoom: zoom / 100 }}
+      >
       {/* ------------------------------- portada ------------------------------ */}
       {cover ? (
         <div className="group/cover relative h-[180px] w-full" style={{ background: cover }}>
@@ -168,12 +219,12 @@ export default function PageView({ page }: { page: Page }) {
               <button
                 type="button"
                 onClick={() => setIconOpen((v) => !v)}
-                className="rounded-[6px] px-1 text-[64px] leading-[1.1] transition-colors hover:bg-surface-hover"
+                className="rounded-[6px] px-1 transition-colors hover:bg-surface-hover"
                 aria-label="Cambiar icono"
               >
-                {page.icon}
+                <PageIcon icon={page.icon} size={62} />
               </button>
-              <EmojiPicker
+              <IconPicker
                 open={iconOpen}
                 onClose={() => setIconOpen(false)}
                 onPick={(e) => updatePage(page.id, { icon: e })}
@@ -190,7 +241,7 @@ export default function PageView({ page }: { page: Page }) {
                 >
                   😀 Agregar icono
                 </button>
-                <EmojiPicker
+                <IconPicker
                   open={iconOpen}
                   onClose={() => setIconOpen(false)}
                   onPick={(e) => updatePage(page.id, { icon: e })}
@@ -224,6 +275,7 @@ export default function PageView({ page }: { page: Page }) {
           key={page.id}
           data-tts-title
           rows={1}
+          readOnly={locked}
           defaultValue={page.title}
           placeholder="Sin título"
           spellCheck={false}
@@ -238,9 +290,36 @@ export default function PageView({ page }: { page: Page }) {
           className="mt-1 w-full resize-none overflow-hidden bg-transparent text-[40px] font-bold leading-[1.15] tracking-[-0.02em] text-fg outline-none placeholder:text-fg/20"
         />
 
+        {locked && (
+          <div
+            data-lock-badge
+            className="mb-1 mt-1 flex items-center gap-2 rounded-[5px] border border-line bg-surface-hover/60 px-2.5 py-1.5 text-[12.5px] text-fg/65"
+          >
+            <Icon name="lock" size={13} className="shrink-0 text-fg/50" />
+            <span>
+              Página bloqueada. No se puede editar hasta desbloquearla.
+            </span>
+            <button
+              type="button"
+              data-lock-toggle
+              onClick={() => toggleLock(page.id)}
+              className="ml-auto shrink-0 rounded-[4px] px-1.5 py-0.5 text-[12px] font-medium text-accent hover:bg-surface-hover"
+            >
+              Desbloquear <kbd className="ml-1 text-fg/35">⌘⇧B</kbd>
+            </button>
+          </div>
+        )}
+
         {/* ------------------------------- contenido ---------------------------- */}
-        <div className="mt-1">
-          {page.database ? <DatabaseView page={page} /> : <Editor key={page.id} page={page} />}
+        {/* `inert` corta teclado, clic y foco de todo el contenido de una vez */}
+        <div className="mt-1" inert={locked}>
+          {page.isFolder ? (
+            <FolderView key={page.id} page={page} />
+          ) : page.database ? (
+            <DatabaseView page={page} />
+          ) : (
+            <Editor key={page.id} page={page} />
+          )}
         </div>
 
         {/* ------------------------------- footer ------------------------------- */}
@@ -259,6 +338,7 @@ export default function PageView({ page }: { page: Page }) {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -67,9 +67,23 @@ export type IconName =
   | "download"
   | "dock"
   | "target"
-  | "sliders";
+  | "sliders"
+  | "folder"
+  | "file"
+  | "paperclip"
+  | "timeline"
+  | "minus"
+  | "zoom";
 
 const P: Record<IconName, React.ReactNode> = {
+  minus: <path d="M4 9h10" />,
+  zoom: (
+    <>
+      <circle cx="8.2" cy="8.2" r="5.2" />
+      <path d="M12.2 12.2 16 16" />
+      <path d="M6.2 8.2h4M8.2 6.2v4" />
+    </>
+  ),
   search: (
     <>
       <circle cx="8.2" cy="8.2" r="5.2" />
@@ -392,6 +406,24 @@ const P: Record<IconName, React.ReactNode> = {
       <circle cx="6.4" cy="6.2" r="1.7" />
       <circle cx="11.6" cy="11.8" r="1.7" />
     </>
+  ),
+  folder: (
+    <path d="M2.4 5.2c0-.7.6-1.2 1.2-1.2h3.2l1.6 1.8h6c.7 0 1.2.6 1.2 1.2v6c0 .7-.5 1.2-1.2 1.2H3.6c-.7 0-1.2-.5-1.2-1.2V5.2Z" />
+  ),
+  file: (
+    <>
+      <path d="M4.6 2.4h5.2l3.6 3.6v9.6H4.6V2.4Z" />
+      <path d="M9.6 2.6v3.6h3.6" />
+    </>
+  ),
+  timeline: (
+    <>
+      <path d="M2.6 4.6h8.2M5.4 9h8.6M3.8 13.4h7" />
+      <circle cx="12.6" cy="4.6" r="1.4" />
+    </>
+  ),
+  paperclip: (
+    <path d="M12.4 8.6 8 13a2.7 2.7 0 0 1-3.8-3.8l5-5a1.9 1.9 0 0 1 2.7 2.7l-5 5a1 1 0 0 1-1.5-1.3l4.4-4.4" />
   ),
 };
 

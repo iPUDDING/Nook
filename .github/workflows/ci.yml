@@ -46,3 +46,69 @@ jobs:
           path: nook-web.zip
           if-no-files-found: error
           retention-days: 14
+
+  # Las suites de verificación existían pero no corrían en ningún lado: un cambio
+  # podía romper el editor, la suscripción o el saneo de HTML sin que nadie se
+  # enterara hasta abrir el .exe. Este job monta el sitio estático y las corre.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Generar el sitio estático
+        run: npm run build:static
+
+      - name: Servir out/ en 4321
+        run: |
+          python3 -m http.server 4321 --bind 127.0.0.1 --directory out &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4321 >/dev/null && break
+            sleep 1
+          done
+
+      - name: Verificaciones (funcionalidad, suscripción y seguridad)
+        run: |
+          node scripts/verificar-030.mjs http://127.0.0.1:4321
+          node scripts/verificar-040.mjs http://127.0.0.1:4321
+          node scripts/verificar-seguridad.mjs http://127.0.0.1:4321
+          node scripts/verificar-movil.mjs http://127.0.0.1:4321
+          node scripts/verificar-modales.mjs http://127.0.0.1:4321
+          node scripts/verificar-lectura.mjs http://127.0.0.1:4321
+          node scripts/verificar-historial.mjs http://127.0.0.1:4321
+          node scripts/verificar-carpetas.mjs http://127.0.0.1:4321
+          node scripts/verificar-vistas.mjs http://127.0.0.1:4321
+          node scripts/verificar-iconos.mjs http://127.0.0.1:4321
+          node scripts/verificar-mover.mjs http://127.0.0.1:4321
+          node scripts/verificar-calendario.mjs http://127.0.0.1:4321
+          node scripts/verificar-arrastrar.mjs http://127.0.0.1:4321
+          node scripts/verificar-arrastrar-paginas.mjs http://127.0.0.1:4321
+          node scripts/verificar-vistas-config.mjs http://127.0.0.1:4321
+          node scripts/verificar-busqueda.mjs http://127.0.0.1:4321
+          node scripts/verificar-bloqueo.mjs http://127.0.0.1:4321
+          node scripts/verificar-copias.mjs http://127.0.0.1:4321
+          node scripts/verificar-zoom.mjs http://127.0.0.1:4321
+          node scripts/verificar-repeticion.mjs http://127.0.0.1:4321
+          node scripts/verificar-propiedades.mjs http://127.0.0.1:4321
+          node scripts/verificar-busqueda-global.mjs http://127.0.0.1:4321
+
+      - name: Capturas y logs si algo falla
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fallo-e2e
+          path: |
+            test-results/
+            *.log
+          if-no-files-found: ignore
+          retention-days: 7

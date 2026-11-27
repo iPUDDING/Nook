@@ -1,4 +1,4 @@
-import type { Block, Database, Page, Person, Property } from "./types";
+import type { Block, Database, Member, Page, Person, Property } from "./types";
 import { uid } from "./utils";
 
 /** Fechas fijas: si usáramos Date.now() el HTML del server y del cliente no
@@ -15,6 +15,61 @@ export const PEOPLE: Person[] = [
 ];
 
 export const personById = (id: string) => PEOPLE.find((p) => p.id === id);
+
+/**
+ * Miembros iniciales del workspace.
+ *
+ * No hay límite: `members` es una lista abierta y se persiste junto al
+ * workspace. Estos cinco son los que ya aparecen en el seed de la base de datos
+ * de "Roadmap de producto", así los avatares coinciden.
+ */
+export const SEED_MEMBERS: Member[] = [
+  {
+    id: "mem-owner",
+    name: "Vos",
+    email: "vos@acme.dev",
+    initials: "YO",
+    color: "gray",
+    role: "owner",
+    joinedAt: "2026-11-01T10:00:00Z",
+  },
+  {
+    id: "mem-ana",
+    name: "Ana Duarte",
+    email: "ana@acme.dev",
+    initials: "AD",
+    color: "blue",
+    role: "admin",
+    joinedAt: "2026-11-02T10:20:00Z",
+  },
+  {
+    id: "mem-bruno",
+    name: "Bruno Sosa",
+    email: "bruno@acme.dev",
+    initials: "BS",
+    color: "green",
+    role: "editor",
+    joinedAt: "2026-11-05T09:15:00Z",
+  },
+  {
+    id: "mem-caro",
+    name: "Caro Ferreyra",
+    email: "caro@acme.dev",
+    initials: "CF",
+    color: "purple",
+    role: "commenter",
+    joinedAt: "2026-11-08T16:40:00Z",
+  },
+  {
+    id: "mem-diego",
+    name: "Diego Paz",
+    email: "diego@acme.dev",
+    initials: "DP",
+    color: "orange",
+    role: "viewer",
+    joinedAt: "2026-11-12T11:05:00Z",
+  },
+];
 
 const b = (type: Block["type"], html = "", extra: Partial<Block> = {}): Block => ({
   id: uid("blk"),
@@ -115,11 +170,24 @@ const homeBlocks: Block[] = [
   b("callout", "<strong>Este workspace es un clon funcional</strong> hecho en Next.js + Tailwind, con editor de bloques, bases de datos y páginas anidadas. Todo lo que escribas se guarda en tu navegador.", { color: "blue" }),
   b("paragraph", "Escribí <code>/</code> en cualquier bloque vacío para abrir el menú de comandos. Probá también <code># </code>, <code>- </code>, <code>[] </code> o <code>&gt; </code> al inicio de la línea."),
   b("h2", "Qué está implementado"),
-  b("bulleted", "Editor de bloques con <strong>12 tipos</strong>: texto, títulos, listas, to-do, toggle, cita, callout, divisor y código.", { indent: 0 }),
+  b("bulleted", "Editor de bloques con <strong>13 tipos</strong>: texto, títulos, listas, to-do, toggle, cita, callout, tabla, divisor y código.", { indent: 0 }),
   b("bulleted", "Formato inline con <strong>⌘B</strong>, <em>⌘I</em>, <u>⌘U</u> y <code>⌘E</code> para código.", { indent: 0 }),
   b("bulleted", "Reordenar arrastrando el handle <strong>⠿</strong> que aparece al pasar el mouse por la izquierda del bloque.", { indent: 0 }),
   b("bulleted", "Bases de datos con vistas <strong>tabla</strong>, <strong>board</strong> y <strong>lista</strong>, propiedades de estado, selección, persona, fecha y checkbox.", { indent: 0 }),
   b("bulleted", "Páginas anidadas, favoritos, papelera y restauración.", { indent: 0 }),
+  b("h2", "Tablas"),
+  b("paragraph", "Las tablas de Markdown se importan y se pegan como tabla real: celdas editables, filas y columnas que se agregan con un clic. <code>Enter</code> baja de celda y <code>Tab</code> avanza."),
+  b("table", "", {
+    table: {
+      header: ["Comando", "Qué hace", "Desde"],
+      rows: [
+        ["<code>/tabla</code>", "Insertar una tabla vacía", "0.3.0"],
+        ["⌘V", "Pegar Markdown y convertirlo en bloques", "0.3.0"],
+        ["Importar Markdown", "Traer un <code>.md</code> del disco", "0.1.0"],
+      ],
+      align: ["left", "left", "right"],
+    },
+  }),
   b("h2", "Atajos que conviene memorizar"),
   b("toggle", "Guía rápida de teclado", { collapsed: false }),
   b("paragraph", "<strong>⌘K</strong> — buscar páginas y ejecutar comandos", { indent: 1 }),
@@ -247,6 +315,17 @@ export function buildSeedPages(): Record<string, Page> {
     blocks: [
       b("h2", "Quiénes somos"),
       b("paragraph", "Cinco personas, tres husos horarios y una sola fuente de verdad."),
+      b("table", "", {
+        table: {
+          header: ["Ceremonia", "Cuándo", "Quién"],
+          rows: [
+            ["Daily", "Lunes a viernes · 9:30", "Todo el equipo"],
+            ["Revisión de roadmap", "Miércoles · 15:00", "Ana y Diego"],
+            ["Retro", "Viernes · 16:00", "Todo el equipo"],
+          ],
+          align: ["left", "left", "left"],
+        },
+      }),
       b("h2", "Cómo trabajamos"),
       b("bulleted", "Todo lo que no está escrito no existe."),
       b("bulleted", "Las decisiones se registran con fecha y responsable."),

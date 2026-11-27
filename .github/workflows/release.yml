@@ -2,7 +2,7 @@ name: release
 
 # Publica una versión para la comunidad.
 #
-#   git tag v0.2.2 && git push origin v0.2.2
+#   git tag v0.10.0 && git push origin v0.10.0
 #
 # Al pushear el tag, este workflow compila el .exe de Windows y el zip de la web,
 # y los adjunta a la página de Releases del repositorio. Ahí los descarga

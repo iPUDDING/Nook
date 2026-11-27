@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Icon from "./Icon";
+import PageIcon from "./PageIcon";
 import { usePomodoro } from "./pomodoro/Pomodoro";
 import { useReadAloud } from "./tts/useReadAloud";
 import { MenuItem, MenuSeparator, Popover } from "./ui";
@@ -18,6 +19,8 @@ export default function TopBar() {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const fullWidth = useStore((s) => s.fullWidth);
+  const zoom = useStore((s) => s.zoom);
+  const setZoom = useStore((s) => s.setZoom);
   const toggleFullWidth = useStore((s) => s.toggleFullWidth);
   const selectPage = useStore((s) => s.selectPage);
   const toggleFavorite = useStore((s) => s.toggleFavorite);
@@ -57,7 +60,7 @@ export default function TopBar() {
               onClick={() => selectPage(a.id)}
               className="max-w-[160px] truncate rounded-[3px] px-1.5 py-1 text-fg/60 transition-colors hover:bg-surface-hover hover:text-fg"
             >
-              {a.icon ? <span className="mr-1">{a.icon}</span> : null}
+              {a.icon ? <PageIcon icon={a.icon} size={13} className="mr-1" /> : null}
               {a.title || "Sin título"}
             </button>
             <span className="px-0.5 text-fg/25">/</span>
@@ -67,7 +70,7 @@ export default function TopBar() {
           type="button"
           className="max-w-[220px] truncate rounded-[3px] px-1.5 py-1 text-fg/90 transition-colors hover:bg-surface-hover"
         >
-          {page.icon ? <span className="mr-1">{page.icon}</span> : null}
+          {page.icon ? <PageIcon icon={page.icon} size={13} className="mr-1" /> : null}
           {page.title || "Sin título"}
         </button>
       </nav>
@@ -121,6 +124,19 @@ export default function TopBar() {
             <Icon name="timer" size={16} />
           </button>
         </div>
+
+        {zoom !== 100 && (
+          <button
+            type="button"
+            data-zoom-badge
+            onClick={() => setZoom(100)}
+            title="Volver al tamaño normal (⌘0)"
+            className="mr-1 flex h-[26px] items-center gap-1 rounded-[4px] border border-line px-1.5 text-[12px] tabular-nums text-fg/60 hover:bg-surface-hover hover:text-fg"
+          >
+            <Icon name="zoom" size={12} />
+            {zoom}%
+          </button>
+        )}
 
         <button
           type="button"
@@ -179,6 +195,12 @@ export default function TopBar() {
             <MenuItem icon={<Icon name="mindmap" size={15} />} onClick={() => { setUI({ mindmapOpen: true }); setMoreOpen(false); }}>
               Mapa mental
             </MenuItem>
+            <MenuItem
+              icon={<Icon name="clock" size={15} />}
+              onClick={() => { setUI({ historyOpen: true }); setMoreOpen(false); }}
+            >
+              Historial de versiones
+            </MenuItem>
             <MenuSeparator />
             <MenuItem
               icon={<Icon name="download" size={15} />}
@@ -207,6 +229,16 @@ export default function TopBar() {
             <MenuSeparator />
             <MenuItem icon={<Icon name="type" size={15} />} onClick={() => { toggleFullWidth(); setMoreOpen(false); }}>
               {fullWidth ? "Ancho normal" : "Ancho completo"}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<Icon name="zoom" size={15} />} onClick={() => { setZoom(zoom + 10); setMoreOpen(false); }}>
+              Acercar <kbd className="ml-auto text-[11px] text-fg/35">⌘+</kbd>
+            </MenuItem>
+            <MenuItem icon={<Icon name="minus" size={15} />} onClick={() => { setZoom(zoom - 10); setMoreOpen(false); }}>
+              Alejar <kbd className="ml-auto text-[11px] text-fg/35">⌘−</kbd>
+            </MenuItem>
+            <MenuItem icon={<Icon name="type" size={15} />} onClick={() => { setZoom(100); setMoreOpen(false); }}>
+              Tamaño normal <span className="ml-auto text-[11px] text-fg/35">{zoom}%</span>
             </MenuItem>
             <MenuItem
               icon={<Icon name={theme === "dark" ? "sun" : "moon"} size={15} />}

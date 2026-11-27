@@ -115,7 +115,7 @@ independientes:
 | Barra superior | Presencia / avatares en vivo, comentarios reales | ⛔ pendiente |
 | Página | Portada con galería de gradientes, icono emoji, título autoexpandible | ✅ |
 | Página | Ancho completo / pequeño, historial de versiones, exportar | ⚠️ ancho completo sí; el resto pendiente |
-| Editor | 12 tipos de bloque | ✅ |
+| Editor | 13 tipos de bloque | ✅ |
 | Editor | Menú `/` con búsqueda y navegación por teclado | ✅ |
 | Editor | Atajos markdown (`# `, `- `, `[] `, `> `, ```` ``` ````, `1. `, `---`) | ✅ |
 | Editor | Formato inline ⌘B/I/U/E | ✅ |

@@ -58,7 +58,7 @@ sistema de archivos del usuario no queda expuesto al renderer.
 | | Estado |
 |---|---|
 | `out/` generado y servido plano | ✅ 25 bloques, 0 errores de consola |
-| `.exe` portable de Windows construido | ✅ 78 MB, `release/Nook-0.2.2-portable.exe` |
+| `.exe` portable de Windows construido | ✅ 78 MB, `release/Nook-0.10.0-portable.exe` |
 | La app empaquetada **abre y renderiza** | ✅ verificado sobre el mismo `app.asar` (build Linux, Xvfb + CDP): título, 25 bloques, `localStorage`, 0 errores |
 | El `.exe` ejecutado en Windows real | ⚠️ no verificable desde Linux (no hay Windows en este entorno) — es el mismo código empaquetado |
 | Instalador NSIS `setup.exe` | ⚠️ se genera en Windows o en CI; desde Linux requiere `wine32` |

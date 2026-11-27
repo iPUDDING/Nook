@@ -8,16 +8,31 @@
  * que habla con una utterance suelta para no apropiarse de la barra de lectura.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { Shell } from "./Modals";
 import { useSpeech } from "./tts/Speech";
+import { borrarCopia, leerCopias, limpiarCopias, restaurarCopia, tomarCopia } from "@/lib/backups";
 import { useStore, type BackupPayload } from "@/lib/store";
+import {
+  DEMO_LICENSE,
+  PLANS,
+  planInfo,
+  PLAN_FEATURES,
+  hasFeature,
+  historyLimit,
+  planLabel,
+  seatLimit,
+  type PlanTier,
+} from "@/lib/plan";
 import { applyRules, pickDefaultVoice, speakableMath, voiceLabel } from "@/lib/speech";
+import { workspaceToHtml } from "@/lib/markdown";
 import { cx, downloadFile } from "@/lib/utils";
 import type { PaperKey } from "@/lib/types";
+import { MAX_PER_PAGE, totalBytes } from "@/lib/versions";
+import { blobToBase64, FILE_EMBED_BUDGET, formatBytes, pickEmbeddable, readBlob } from "@/lib/files";
 
-const TABS = ["Apariencia", "Voz", "Lectura", "Pomodoro", "Pronunciación", "Datos"] as const;
+const TABS = ["Plan", "Apariencia", "Voz", "Lectura", "Pomodoro", "Pronunciación", "Datos"] as const;
 type Tab = (typeof TABS)[number];
 
 const PAPERS: { key: PaperKey; label: string; swatch: string }[] = [
@@ -70,6 +85,15 @@ function Slider({
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[6px] bg-surface-hover/60 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-fg/40">{label}</div>
+      <div className="truncate text-[12.5px] font-medium text-fg/85">{value}</div>
+    </div>
+  );
+}
+
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -93,7 +117,10 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 export function SettingsModeless({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("Apariencia");
+  const settingsTab = useStore((s) => s.settingsTab);
+  const [tab, setTab] = useState<Tab>(() =>
+    TABS.includes(settingsTab as Tab) ? (settingsTab as Tab) : "Apariencia",
+  );
   const [feedback, setFeedback] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [ruleFrom, setRuleFrom] = useState("");
   const [ruleTo, setRuleTo] = useState("");
@@ -110,12 +137,35 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
   const setPomodoro = useStore((s) => s.setPomodoro);
   const resetPomodoroStats = useStore((s) => s.resetPomodoroStats);
   const pomHistory = useStore((s) => s.pomHistory);
+  const members = useStore((s) => s.members);
   const rules = useStore((s) => s.rules);
   const addRule = useStore((s) => s.addRule);
   const removeRule = useStore((s) => s.removeRule);
   const pages = useStore((s) => s.pages);
   const resetWorkspace = useStore((s) => s.resetWorkspace);
   const restoreBackup = useStore((s) => s.restoreBackup);
+  const plan = useStore((s) => s.plan);
+  const versionsMap = useStore((s) => s.versions);
+  const adjuntos = useStore((s) => s.files);
+  const clearVersions = useStore((s) => s.clearVersions);
+  const versiones = useMemo(() => {
+    const listas = Object.values(versionsMap);
+    return {
+      total: listas.reduce((n, l) => n + l.length, 0),
+      bytes: totalBytes(versionsMap),
+    };
+  }, [versionsMap]);
+  const activateLicense = useStore((s) => s.activateLicense);
+  const deactivatePlan = useStore((s) => s.deactivatePlan);
+  const setPlanTier = useStore((s) => s.setPlanTier);
+  /** se releen al abrir la sección y después de cada acción */
+  const [copias, setCopias] = useState<{ id: string; at: number; bytes: number }[]>([]);
+  useEffect(() => {
+    setCopias(leerCopias().map((c) => ({ id: c.id, at: c.at, bytes: c.bytes })));
+  }, []);
+
+  const [license, setLicense] = useState("");
+  const [planFeedback, setPlanFeedback] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const { voices, supported } = useSpeech();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -124,9 +174,10 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
   const payload = useMemo<BackupPayload>(() => {
     const s = useStore.getState();
     return {
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       pages: s.pages,
+      members: s.members,
       selectedId: s.selectedId,
       expanded: s.expanded,
       theme: s.theme,
@@ -139,16 +190,51 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
       rules: s.rules,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages, theme, tts, reading, pomodoro, pomHistory, rules]);
+  }, [pages, theme, tts, reading, pomodoro, pomHistory, rules, members]);
 
   const sizeKb = Math.round(new Blob([JSON.stringify(payload)]).size / 1024);
 
-  const exportBackup = () => {
+  /**
+   * Respaldo con adjuntos.
+   *
+   * Los metadatos viajan siempre; el contenido binario sólo para los archivos que
+   * entran en el presupuesto (`FILE_EMBED_BUDGET`), porque un JSON con 2 GB de
+   * PDFs no se puede generar ni abrir. Los que quedan afuera se nombran en el
+   * aviso: el usuario tiene que saber qué no está respaldando.
+   */
+  const exportBackup = async () => {
+    const { dentro, fuera } = pickEmbeddable(adjuntos);
+    const fileBlobs: { id: string; mime: string; data: string }[] = [];
+
+    for (const file of dentro) {
+      const leido = await readBlob(file.id);
+      if (!leido.ok || !leido.value) continue;
+      try {
+        fileBlobs.push({ id: file.id, mime: file.mime, data: await blobToBase64(leido.value) });
+      } catch {
+        fuera.push(file);
+      }
+    }
+
+    const cuerpo = { ...payload, files: adjuntos, fileBlobs };
     downloadFile(
       `nook-respaldo-${new Date().toISOString().slice(0, 10)}.json`,
-      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }),
+      new Blob([JSON.stringify(cuerpo, null, 2)], { type: "application/json;charset=utf-8" }),
     );
-    setFeedback({ kind: "ok", text: "Respaldo descargado." });
+
+    if (!adjuntos.length) {
+      setFeedback({ kind: "ok", text: "Respaldo descargado." });
+    } else if (!fuera.length) {
+      setFeedback({ kind: "ok", text: `Respaldo descargado con ${dentro.length} adjunto(s) incluidos.` });
+    } else {
+      setFeedback({
+        kind: "error",
+        text: `Respaldo descargado con ${dentro.length} de ${adjuntos.length} adjuntos (los que no entran en ${formatBytes(FILE_EMBED_BUDGET)} viajan sólo como ficha). Fuera: ${fuera
+          .slice(0, 3)
+          .map((f) => f.name)
+          .join(", ")}${fuera.length > 3 ? "…" : ""}`,
+      });
+    }
   };
 
   const importBackup = async (file: File) => {
@@ -210,6 +296,196 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </div>
+
+      {/* -------------------------------- plan -------------------------------- */}
+      {tab === "Plan" && (() => {
+        const seats = seatLimit(plan);
+        const days = historyLimit(plan);
+        const enabled = PLAN_FEATURES.filter((f) => hasFeature(plan, f.id)).length;
+
+        const submitLicense = () => {
+          const res = activateLicense(license);
+          if (!res.ok) {
+            setPlanFeedback({ kind: "error", text: res.error ?? "No se pudo activar." });
+            return;
+          }
+          setPlanFeedback({ kind: "ok", text: "Suscripción activada. Todos los límites quedaron desactivados." });
+          setLicense("");
+        };
+
+        return (
+          <div className="space-y-4">
+            {/* ------------------------- plan actual ------------------------- */}
+            <div className="rounded-[8px] border border-line p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-semibold text-fg">
+                      Nook {planInfo(plan.tier).name}
+                    </span>
+                    <span
+                      className={cx(
+                        "rounded-full px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide",
+                        plan.active ? "bg-accent-soft text-accent" : "bg-fg/10 text-fg/45",
+                      )}
+                    >
+                      {plan.active ? "Activo" : "Inactivo"}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[12.5px] leading-snug text-fg/50">
+                    {planInfo(plan.tier).tagline}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[15px] font-semibold tabular-nums text-fg">{planInfo(plan.tier).price}</div>
+                  <div className="text-[10.5px] text-fg/40">por miembro / mes</div>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Stat label="Miembros" value={seats === null ? "Ilimitados" : String(seats)} />
+                <Stat label="Historial" value={days === null ? "Ilimitado" : `${days} días`} />
+                <Stat label="Tablas" value={hasFeature(plan, "tables") ? "Ilimitadas" : "—"} />
+                <Stat label="Desde" value={new Date(plan.since).toLocaleDateString("es-AR")} />
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (plan.active) {
+                      deactivatePlan();
+                      setPlanFeedback({ kind: "ok", text: "Suscripción cancelada: quedan las capacidades del plan Gratis." });
+                    } else {
+                      const res = activateLicense(DEMO_LICENSE);
+                      setPlanFeedback(
+                        res.ok
+                          ? { kind: "ok", text: "Suscripción reactivada con la licencia de demostración." }
+                          : { kind: "error", text: res.error ?? "No se pudo reactivar." },
+                      );
+                    }
+                  }}
+                  className={cx(
+                    "flex h-[30px] items-center gap-1.5 rounded-[5px] border px-2.5 text-[12.5px]",
+                    plan.active
+                      ? "border-line text-fg/75 hover:bg-surface-hover"
+                      : "border-accent bg-accent text-white hover:opacity-90",
+                  )}
+                >
+                  <Icon name={plan.active ? "x" : "check"} size={13} />
+                  {plan.active ? "Cancelar suscripción" : "Reactivar suscripción"}
+                </button>
+
+                <select
+                  value={plan.tier}
+                  onChange={(e) => setPlanTier(e.target.value as PlanTier)}
+                  aria-label="Plan"
+                  className="h-[30px] rounded-[5px] border border-line bg-surface px-2 text-[12.5px] text-fg outline-none focus:border-accent/60"
+                >
+                  {(Object.keys(PLANS) as PlanTier[]).map((t) => (
+                    <option key={t} value={t}>
+                      {PLANS[t].name} · {PLANS[t].price}
+                    </option>
+                  ))}
+                </select>
+
+                <span className="text-[11px] text-fg/35">
+                  {plan.license ? `Licencia ${plan.license}` : "Activada de fábrica"}
+                </span>
+              </div>
+            </div>
+
+            {/* ------------------------- capacidades ------------------------- */}
+            <div>
+              <div className="mb-1.5 flex items-baseline justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-fg/40">
+                  Qué incluye tu suscripción
+                </span>
+                <span className="text-[11px] tabular-nums text-fg/35">
+                  {enabled}/{PLAN_FEATURES.length} habilitadas
+                </span>
+              </div>
+              <div className="divide-y divide-line rounded-[8px] border border-line">
+                {PLAN_FEATURES.map((f) => {
+                  const on = hasFeature(plan, f.id);
+                  return (
+                    <div key={f.id} className="flex items-start gap-2.5 px-3 py-2">
+                      <span
+                        className={cx(
+                          "mt-[2px] flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full text-white",
+                          on ? "bg-[#448361]" : "bg-fg/20",
+                        )}
+                      >
+                        <Icon name={on ? "check" : "x"} size={10} strokeWidth={3} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] text-fg">{f.label}</div>
+                        <div className="text-[11.5px] leading-snug text-fg/45">{f.hint}</div>
+                      </div>
+                      <span
+                        className={cx(
+                          "shrink-0 pt-[1px] text-[11.5px]",
+                          on ? "text-[#448361]" : "text-fg/35",
+                        )}
+                      >
+                        {on ? f.unlocked : `Plan ${PLANS[f.minTier].name}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* --------------------------- licencia -------------------------- */}
+            <div className="rounded-[8px] border border-line p-3.5">
+              <div className="text-[13px] font-medium text-fg">Activar con una licencia</div>
+              <div className="mt-0.5 text-[11.5px] leading-snug text-fg/45">
+                Pegá la clave que te entregaron. Se valida sin conexión y queda guardada en este equipo.
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={license}
+                  onChange={(e) => {
+                    setLicense(e.target.value);
+                    setPlanFeedback(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      submitLicense();
+                    }
+                  }}
+                  placeholder="NOOK-XXXX-XXXX-XXXX"
+                  aria-label="Clave de licencia"
+                  className="h-[32px] flex-1 rounded-[5px] border border-line bg-surface px-2.5 font-mono text-[12.5px] uppercase tracking-wide text-fg outline-none placeholder:text-fg/30 focus:border-accent/60"
+                />
+                <button
+                  type="button"
+                  onClick={submitLicense}
+                  className="h-[32px] rounded-[5px] bg-accent px-3 text-[12.5px] font-medium text-white hover:opacity-90"
+                >
+                  Activar
+                </button>
+              </div>
+              {planFeedback && (
+                <div
+                  className={cx(
+                    "mt-2 text-[12px]",
+                    planFeedback.kind === "ok" ? "text-[#448361]" : "text-[#eb5757]",
+                  )}
+                >
+                  {planFeedback.text}
+                </div>
+              )}
+              <div className="mt-2 text-[11px] leading-relaxed text-fg/35">
+                Clave de demostración: <code className="font-mono">{DEMO_LICENSE}</code>. Nook no
+                procesa pagos ni tiene servidor: la validación es local, así que esto es una capa de
+                producto, no DRM.
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ------------------------------ apariencia ---------------------------- */}
       {tab === "Apariencia" && (
@@ -461,19 +737,137 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
               <span className="tabular-nums">{sizeKb} KB</span>
             </div>
             <div className="flex justify-between py-0.5">
+              <span>Historial de versiones</span>
+              <span className="tabular-nums">
+                {versiones.total} {versiones.total === 1 ? "versión" : "versiones"} ·{" "}
+                {Math.max(1, Math.round(versiones.bytes / 1024))} KB
+              </span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span>Archivos adjuntos</span>
+              <span className="tabular-nums">
+                {adjuntos.length} · {formatBytes(adjuntos.reduce((n, f) => n + f.size, 0))}
+              </span>
+            </div>
+            <div className="flex justify-between py-0.5">
+              <span>Retención del historial</span>
+              <span>{historyLimit(plan) === null ? "sin límite" : `${historyLimit(plan)} días`}</span>
+            </div>
+            <div className="flex justify-between py-0.5">
               <span>Almacenamiento</span>
               <span>localStorage del navegador</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div data-copias className="mt-3 rounded-home border border-line px-3 py-2.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[12.5px] font-medium text-fg/70">Copias automáticas</span>
+              <span className="text-[11.5px] text-fg/40">
+                cada 5 min mientras haya cambios · se guardan las últimas {5}
+              </span>
+            </div>
+            {copias.length === 0 ? (
+              <p className="text-[12px] text-fg/45">
+                Todavía no hay copias: la primera se toma sola al abrir la app.
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {copias.map((c) => (
+                  <li
+                    key={c.id}
+                    data-copia={c.id}
+                    className="flex items-center gap-2 rounded-[4px] px-1 py-1 text-[12px] hover:bg-surface-hover"
+                  >
+                    <Icon name="clock" size={12} className="shrink-0 text-fg/35" />
+                    <span className="tabular-nums text-fg/70">
+                      {new Date(c.at).toLocaleString("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span className="text-fg/35">{formatBytes(c.bytes)}</span>
+                    <span className="ml-auto flex items-center gap-1">
+                      <button
+                        type="button"
+                        data-copia-restaurar={c.id}
+                        onClick={() => {
+                          const ok = restaurarCopia(c.id);
+                          setFeedback(
+                            ok
+                              ? { kind: "ok", text: "Workspace restaurado desde la copia." }
+                              : { kind: "error", text: "La copia no tiene la forma de un respaldo." },
+                          );
+                        }}
+                        className="rounded-[4px] px-1.5 py-0.5 text-[11.5px] text-accent hover:bg-surface-hover"
+                      >
+                        Restaurar
+                      </button>
+                      <button
+                        type="button"
+                        data-copia-borrar={c.id}
+                        onClick={() => {
+                          borrarCopia(c.id);
+                          setCopias(leerCopias().map((x) => ({ id: x.id, at: x.at, bytes: x.bytes })));
+                        }}
+                        className="rounded-[4px] px-1.5 py-0.5 text-[11.5px] text-fg/45 hover:bg-surface-hover hover:text-fg/70"
+                      >
+                        Borrar
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {copias.length > 0 && (
+              <button
+                type="button"
+                data-copias-limpiar
+                onClick={() => {
+                  limpiarCopias();
+                  setCopias([]);
+                  setFeedback({ kind: "ok", text: "Copias automáticas borradas." });
+                }}
+                className="mt-1.5 text-[11.5px] text-fg/40 hover:text-fg/70"
+              >
+                Borrar todas
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={exportBackup}
+              onClick={() => void exportBackup()}
               className="flex h-[32px] items-center gap-1.5 rounded-[5px] border border-line px-2.5 text-[12.5px] text-fg/80 hover:bg-surface-hover"
             >
               <Icon name="download" size={14} />
               Exportar respaldo
+            </button>
+            <button
+              type="button"
+              disabled={!hasFeature(plan, "exportAll")}
+              title={
+                hasFeature(plan, "exportAll")
+                  ? "Todas las páginas en un solo HTML, con índice"
+                  : "La exportación completa viene con Business"
+              }
+              onClick={() => {
+                const lista = Object.values(pages).filter((p) => !p.trashed);
+                downloadFile(
+                  `nook-workspace-${new Date().toISOString().slice(0, 10)}.html`,
+                  new Blob([workspaceToHtml(lista, "Nook")], { type: "text/html;charset=utf-8" }),
+                );
+                setFeedback({
+                  kind: "ok",
+                  text: `Exportadas ${lista.length} páginas en un HTML con índice.`,
+                });
+              }}
+              className="flex h-[32px] items-center gap-1.5 rounded-[5px] border border-line px-2.5 text-[12.5px] text-fg/80 hover:bg-surface-hover disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <Icon name="download" size={14} />
+              Exportar todo (HTML)
             </button>
             <button
               type="button"
@@ -482,6 +876,33 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
             >
               <Icon name="upload" size={14} />
               Importar respaldo
+            </button>
+            <button
+              type="button"
+              data-copia-ahora
+              onClick={() => {
+                const nueva = tomarCopia(true);
+                setCopias(leerCopias().map((c) => ({ id: c.id, at: c.at, bytes: c.bytes })));
+                setFeedback({
+                  kind: "ok",
+                  text: nueva ? "Copia guardada en este equipo." : "No se pudo guardar la copia.",
+                });
+              }}
+              className="flex h-[32px] items-center gap-1.5 rounded-[5px] border border-line px-2.5 text-[12.5px] text-fg/80 hover:bg-surface-hover"
+            >
+              <Icon name="clock" size={14} />
+              Copiar ahora
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearVersions();
+                setFeedback({ kind: "ok", text: "Historial de versiones borrado." });
+              }}
+              className="flex h-[32px] items-center gap-1.5 rounded-[5px] border border-line px-2.5 text-[12.5px] text-fg/80 hover:bg-surface-hover"
+            >
+              <Icon name="trash" size={14} />
+              Borrar historial
             </button>
             <input
               ref={fileRef}
@@ -495,6 +916,18 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
               }}
             />
           </div>
+
+          <p className="text-[11.5px] leading-relaxed text-fg/45">
+            Los adjuntos viven en IndexedDB, no en el workspace: así un PDF grande no te deja sin
+            espacio para las notas. El respaldo incluye sus fichas siempre y su contenido hasta{" "}
+            {formatBytes(FILE_EMBED_BUDGET)}.
+          </p>
+
+          <p className="text-[11.5px] leading-relaxed text-fg/45">
+            El historial guarda hasta {MAX_PER_PAGE} versiones por página y se recorta según el plan.
+            Vive en una clave aparte del respaldo: si se llena el espacio, se descarta el historial
+            antes que tus notas.
+          </p>
 
           {feedback ? (
             <div
@@ -528,7 +961,7 @@ export function SettingsModeless({ onClose }: { onClose: () => void }) {
           </button>
 
           <div className="text-[11.5px] leading-relaxed text-fg/35">
-            Nook 0.2.0 · Next.js 15 + Tailwind + Zustand · Clon funcional con fines educativos. Sin assets, logos
+            Nook 0.10.0 · Next.js 15 + Tailwind + Zustand · Clon funcional con fines educativos. Sin assets, logos
             ni código de la app original a la que homenajea.
           </div>
         </div>

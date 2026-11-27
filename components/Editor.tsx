@@ -3,7 +3,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon, { type IconName } from "./Icon";
 import { emptyBlock, requestBlockFocus, takeBlockFocus, useStore } from "@/lib/store";
-import type { Block, BlockType, Page } from "@/lib/types";
+import { sanitizeInlineHtml } from "@/lib/sanitize";
+import { useReadAloud } from "@/components/tts/useReadAloud";
+import { htmlToText } from "@/lib/speech";
+import { looksLikeMarkdown, markdownToBlocks } from "@/lib/markdown";
+import {
+  addColumn,
+  addRow,
+  newTable,
+  getCell,
+  normalizeTable,
+  removeColumn,
+  removeRow,
+  setCell,
+  tableColumns,
+} from "@/lib/table";
+import type { Block, BlockType, Page, TableData } from "@/lib/types";
 import { PILL, cx, uid } from "@/lib/utils";
 
 /* -------------------------------------------------------------------------- */
@@ -59,6 +74,217 @@ function splitAtCaret(el: HTMLElement): [string, string] {
   const holder = document.createElement("div");
   holder.appendChild(frag);
   return [el.innerHTML, holder.innerHTML];
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Bloque de tabla                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Celda editable.
+ *
+ * Repite el patrón de `Editable`: escribimos `innerHTML` sólo cuando difiere de
+ * lo que hay en el DOM. Sin eso, cada tecla re-renderiza y el caret salta.
+ */
+function Cell({
+  html,
+  row,
+  col,
+  header,
+  align,
+  onCommit,
+  onKey,
+}: {
+  html: string;
+  row: number;
+  col: number;
+  header: boolean;
+  align: "left" | "center" | "right";
+  onCommit: (value: string) => void;
+  onKey: (e: React.KeyboardEvent<HTMLDivElement>, row: number, col: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  }, [html]);
+
+  return (
+    <div
+      ref={ref}
+      data-cell={`${row}:${col}`}
+      role="textbox"
+      tabIndex={0}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onInput={(e) => onCommit(e.currentTarget.innerHTML)}
+      onKeyDown={(e) => onKey(e, row, col)}
+      className={cx(
+        "min-h-[30px] w-full whitespace-pre-wrap px-2 py-[5px] text-[13.5px] leading-[1.5] outline-none",
+        "focus:bg-accent/[0.06]",
+        header && "font-medium text-fg",
+        align === "center" && "text-center",
+        align === "right" && "text-right",
+      )}
+    />
+  );
+}
+
+/**
+ * Tabla con celdas editables.
+ *
+ * `Enter` baja a la celda de abajo (y crea la fila si hace falta); `Tab` y
+ * `Shift+Tab` navegan de forma nativa porque cada celda es un elemento
+ * enfocable. La barra de acciones aparece al pasar el mouse.
+ */
+function TableBlock({ page, block }: { page: Page; block: Block }) {
+  const setBlockTable = useStore((s) => s.setBlockTable);
+  const [hover, setHover] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const table: TableData = normalizeTable(
+    block.table ?? { header: ["Columna 1", "Columna 2"], rows: [["", ""]] },
+  );
+  const cols = tableColumns(table);
+
+  const commit = (row: number, col: number, value: string) =>
+    setBlockTable(page.id, block.id, setCell(table, row, col, sanitizeInlineHtml(value)));
+
+  const focusCell = (row: number, col: number) => {
+    const el = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${row}:${col}"]`);
+    if (el) {
+      el.focus();
+      placeCaret(el, "end");
+    }
+  };
+
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>, row: number, col: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (row + 1 < table.rows.length) {
+        focusCell(row + 1, col);
+      } else {
+        setBlockTable(page.id, block.id, addRow(table));
+        // la fila nueva se monta en el próximo frame
+        requestAnimationFrame(() => focusCell(table.rows.length, col));
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).blur();
+    }
+  };
+
+  return (
+    <div
+      className="my-2 w-full"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div
+        ref={gridRef}
+        className="w-full overflow-x-auto rounded-[4px] border border-line"
+        role="table"
+      >
+        <div className="min-w-full">
+          {/* encabezado */}
+          <div
+            className="flex border-b border-line bg-surface-hover/70"
+            role="row"
+          >
+            {Array.from({ length: cols }, (_, c) => (
+              <div
+                key={`h${c}`}
+                role="columnheader"
+                className={cx("min-w-0 flex-1", c > 0 && "border-l border-line")}
+              >
+                <Cell
+                  html={getCell(table, -1, c)}
+                  row={-1}
+                  col={c}
+                  header
+                  align={table.align?.[c] ?? "left"}
+                  onCommit={(value) => commit(-1, c, value)}
+                  onKey={onKey}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* cuerpo */}
+          {table.rows.map((row, r) => (
+            <div
+              key={`r${r}`}
+              role="row"
+              className={cx("flex", r > 0 && "border-t border-line")}
+            >
+              {Array.from({ length: cols }, (_, c) => (
+                <div
+                  key={`c${c}`}
+                  role="cell"
+                  className={cx("min-w-0 flex-1", c > 0 && "border-l border-line")}
+                >
+                  <Cell
+                    html={getCell(table, r, c)}
+                    row={r}
+                    col={c}
+                    header={false}
+                    align={table.align?.[c] ?? "left"}
+                    onCommit={(value) => commit(r, c, value)}
+                    onKey={onKey}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* acciones */}
+      <div
+        className={cx(
+          "mt-1 flex items-center gap-1 text-[11px] text-fg/45 transition-opacity",
+          hover ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setBlockTable(page.id, block.id, addRow(table))}
+          className="rounded-[3px] px-1.5 py-0.5 hover:bg-surface-hover hover:text-fg/80"
+        >
+          + Fila
+        </button>
+        <button
+          type="button"
+          onClick={() => setBlockTable(page.id, block.id, addColumn(table))}
+          className="rounded-[3px] px-1.5 py-0.5 hover:bg-surface-hover hover:text-fg/80"
+        >
+          + Columna
+        </button>
+        <span className="text-fg/20">·</span>
+        <button
+          type="button"
+          onClick={() => setBlockTable(page.id, block.id, removeRow(table, table.rows.length - 1))}
+          className="rounded-[3px] px-1.5 py-0.5 hover:bg-surface-hover hover:text-fg/80"
+        >
+          − Fila
+        </button>
+        <button
+          type="button"
+          onClick={() => setBlockTable(page.id, block.id, removeColumn(table, cols - 1))}
+          className="rounded-[3px] px-1.5 py-0.5 hover:bg-surface-hover hover:text-fg/80"
+        >
+          − Columna
+        </button>
+        <span className="ml-auto tabular-nums text-fg/30">
+          {table.rows.length} × {cols}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -123,6 +349,7 @@ function Editable({
 export default function Editor({ page }: { page: Page }) {
   const patchBlock = useStore((s) => s.patchBlock);
   const insertBlock = useStore((s) => s.insertBlock);
+  const insertBlocks = useStore((s) => s.insertBlocks);
   const removeBlock = useStore((s) => s.removeBlock);
   const moveBlock = useStore((s) => s.moveBlock);
   const indentBlock = useStore((s) => s.indentBlock);
@@ -168,6 +395,19 @@ export default function Editor({ page }: { page: Page }) {
       { id: "quote", label: "Cita", hint: "Capturá una frase", icon: "quote" as IconName, keywords: "cita quote blockquote", apply: (id: string) => setType(id, "quote") },
       { id: "callout", label: "Bloque destacado", hint: "Hacé que resalte", icon: "callout" as IconName, keywords: "callout destacado nota aviso", apply: (id: string) => setType(id, "callout") },
       { id: "code", label: "Código", hint: "Bloque monoespaciado", icon: "code" as IconName, keywords: "codigo code snippet", apply: (id: string) => setType(id, "code") },
+      {
+        id: "table",
+        label: "Tabla",
+        hint: "Filas y columnas editables",
+        icon: "table" as IconName,
+        keywords: "tabla table grilla filas columnas",
+        apply: (id: string) => {
+          patchBlock(page.id, id, { type: "table", html: "", table: newTable(2, 2) });
+          const nb = emptyBlock();
+          insertBlock(page.id, id, nb);
+          requestBlockFocus(nb.id, "start");
+        },
+      },
       {
         id: "divider",
         label: "Divisor",
@@ -373,9 +613,16 @@ export default function Editor({ page }: { page: Page }) {
     }
 
     /* -------------------------------- Tab ---------------------------------- */
+    // Tab sangra sólo cuando hay algo que sangrar; si no, se deja pasar para
+    // que el foco pueda salir del editor con el teclado (antes quedaba atrapado
+    // en el primer bloque, que ya está al ras).
     if (e.key === "Tab") {
-      e.preventDefault();
-      if (index > 0) indentBlock(page.id, block.id, e.shiftKey ? -1 : 1);
+      const puedeSangrar = !e.shiftKey && index > 0;
+      const puedeAlisar = e.shiftKey && (block.indent ?? 0) > 0;
+      if (puedeSangrar || puedeAlisar) {
+        e.preventDefault();
+        indentBlock(page.id, block.id, e.shiftKey ? -1 : 1);
+      }
       return;
     }
 
@@ -439,11 +686,142 @@ export default function Editor({ page }: { page: Page }) {
       quote: "Cita",
       callout: "Escribí algo que valga la pena destacar",
       code: "Código",
+      table: "",
       divider: "",
     })[type];
 
+  /**
+   * Pegar Markdown dentro de la app.
+   *
+   * Si el portapapeles parece Markdown (ver `looksLikeMarkdown`), se convierte
+   * en bloques reales —tablas incluidas— en vez de dejar un párrafo con
+   * símbolos. Si no, se deja el pegado normal del navegador.
+   */
+  /**
+   * Menú contextual propio.
+   *
+   * El navegador no sabe qué bloque hay debajo del puntero; nosotros sí. Al
+   * hacer clic derecho sobre un bloque se ofrece **empezar a leer desde ahí**,
+   * con la frase calculada a partir de la posición exacta del cursor.
+   */
+  const [readMenu, setReadMenu] = useState<{ x: number; y: number; blockId: string; offset: number } | null>(
+    null,
+  );
+  const { readFrom } = useReadAloud();
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const host = (e.target as HTMLElement).closest?.("[data-block-id]") as HTMLElement | null;
+    if (!host) return;
+    const blockId = host.getAttribute("data-block-id");
+    if (!blockId) return;
+
+    e.preventDefault();
+
+    // caracteres del bloque que quedan antes del puntero
+    let offset = 0;
+    const caret =
+      typeof document.caretRangeFromPoint === "function"
+        ? document.caretRangeFromPoint(e.clientX, e.clientY)
+        : null;
+    if (caret && host.contains(caret.startContainer)) {
+      const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+      let acc = 0;
+      let node = walker.nextNode();
+      while (node) {
+        if (node === caret.startContainer) {
+          acc += caret.startOffset;
+          break;
+        }
+        acc += (node as Text).data?.length ?? 0;
+        node = walker.nextNode();
+      }
+      offset = acc;
+    }
+
+    setReadMenu({ x: e.clientX, y: e.clientY, blockId, offset });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+
+    /**
+     * Dentro de una celda de tabla el pegado es de **texto**, no de documento:
+     * convertir el Markdown metería los bloques después de la tabla, lejos de
+     * donde está el caret. La celda se queda con el pegado normal (y su
+     * contenido se sanea al guardarse).
+     */
+    if ((e.target as HTMLElement).closest?.("[data-cell]")) return;
+
+    if (!looksLikeMarkdown(text)) return;
+
+    e.preventDefault();
+
+    const host = (e.target as HTMLElement).closest?.("[data-block-id]") as HTMLElement | null;
+    const blockId = host?.getAttribute("data-block-id") ?? null;
+    const current = blockId ? blocks.find((b) => b.id === blockId) ?? null : null;
+
+    // si el bloque donde se pegó está vacío, lo ocupa el primer bloque pegado
+    const isEmpty = !!current && current.type !== "table" && !htmlToText(current.html);
+    const incoming = markdownToBlocks(text, () => uid("blk"));
+
+    insertBlocks(page.id, blockId, incoming, isEmpty ? blockId : null);
+    requestBlockFocus(incoming[0].id, "end");
+  };
+
   return (
-    <div className="editor-body relative pb-[28vh]">
+    <div
+      className="editor-body relative pb-[28vh]"
+      onPaste={handlePaste}
+      onContextMenu={handleContextMenu}
+    >
+      {readMenu ? (
+        <>
+          {/* capa para cerrar con un clic en cualquier lado */}
+          <div
+            className="fixed inset-0 z-[70]"
+            onClick={() => setReadMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setReadMenu(null);
+            }}
+          />
+          <div
+            role="menu"
+            aria-label="Leer desde aquí"
+            className="pop-in fixed z-[71] w-[236px] overflow-hidden rounded-[8px] border border-line bg-surface-pop py-1 shadow-menu"
+            style={{
+              left: Math.min(readMenu.x, window.innerWidth - 248),
+              top: Math.min(readMenu.y, window.innerHeight - 108),
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                readFrom(readMenu.blockId, readMenu.offset);
+                setReadMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-fg hover:bg-surface-hover"
+            >
+              <Icon name="play" size={14} className="text-fg/60" />
+              Empezar a leer desde aquí
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                readFrom(readMenu.blockId, 0);
+                setReadMenu(null);
+              }}
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-fg hover:bg-surface-hover"
+            >
+              <Icon name="volume" size={14} className="text-fg/60" />
+              Leer este bloque
+            </button>
+          </div>
+        </>
+      ) : null}
       {blocks.map((block, index) => {
         if (hidden.has(block.id)) return null;
         const indent = block.indent ?? 0;
@@ -512,6 +890,8 @@ export default function Editor({ page }: { page: Page }) {
               <div className="py-2">
                 <div className="h-px w-full bg-fg/[0.14]" />
               </div>
+            ) : block.type === "table" ? (
+              <TableBlock page={page} block={block} />
             ) : (
               <div
                 className={cx(
@@ -575,7 +955,12 @@ export default function Editor({ page }: { page: Page }) {
                   block={block}
                   placeholder={placeholderFor(block.type)}
                   registerRef={registerRef}
-                  onInput={(e) => patchBlock(page.id, block.id, { html: e.currentTarget.innerHTML })}
+                  onInput={(e) =>
+                    patchBlock(page.id, block.id, {
+                      // el HTML pegado con formato no es confiable: se sanea antes de persistir
+                      html: sanitizeInlineHtml(e.currentTarget.innerHTML),
+                    })
+                  }
                   onKeyDown={(e) => handleKeyDown(e, block, index)}
                   className={cx(
                     block.type === "h1" && "block-h1",

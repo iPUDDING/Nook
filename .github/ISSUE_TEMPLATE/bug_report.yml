@@ -22,7 +22,7 @@ body:
     id: version
     attributes:
       label: Versión de Nook
-      placeholder: '0.2.2 (aparece en el nombre del .exe o en el README)'
+      placeholder: '0.10.0 (aparece en el nombre del .exe o en el README)'
     validations:
       required: true
   - type: input

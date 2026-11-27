@@ -321,12 +321,62 @@ body {
 /* ==========================================================================
    Resaltado del párrafo que se está leyendo
    ========================================================================== */
+/* ==========================================================================
+   Lectura en voz alta: resaltado de dónde va
+   Tres niveles: bloque activo (barra + fondo), frase activa (CSS Highlight) y
+   micro-animación para que el ojo lo encuentre aunque esté mirando otro lado.
+   ========================================================================== */
+
 [data-block-id].tts-active,
 [data-tts-title].tts-active {
-  background-color: rgb(var(--accent) / 0.1);
+  position: relative;
+  background-color: rgb(var(--accent) / 0.09);
   border-radius: 4px;
-  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.1);
-  transition: background-color 140ms ease;
+  box-shadow: 0 0 0 3px rgb(var(--accent) / 0.09);
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+/* barra lateral: se ve incluso con selección de texto encima */
+[data-block-id].tts-active::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgb(var(--accent));
+  animation: tts-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tts-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* frase que se está pronunciando ahora mismo */
+::highlight(nook-tts) {
+  background-color: rgb(var(--accent) / 0.28);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgb(var(--accent) / 0.7);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* la parte de la frase que la voz ya pronunció: mismo tono, más marcado */
+::highlight(nook-tts-now) {
+  background-color: rgb(var(--accent) / 0.5);
+  color: inherit;
+}
+
+/* en modo lectura el resaltado necesita más contraste sobre papel sepia/negro */
+[data-reading="true"] ::highlight(nook-tts) {
+  background-color: rgb(var(--accent) / 0.34);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-block-id].tts-active::before { animation: none; }
 }
 
 /* ==========================================================================
@@ -370,4 +420,62 @@ body {
   * {
     scroll-behavior: auto !important;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Indicadores del arrastre en el árbol lateral                               */
+/* -------------------------------------------------------------------------- */
+/*
+ * Se pintan con atributos puestos a mano en el evento, no con estado de React:
+ * durante un arrastre nativo el navegador no entrega los eventos al ritmo del
+ * render y el resaltado llegaba un cuadro tarde (o no llegaba). Escribir el
+ * atributo en el propio `dragover` lo hace inmediato.
+ */
+[data-page-row] {
+  position: relative;
+}
+[data-drop-zone="antes"]::before,
+[data-drop-zone="despues"]::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(var(--accent));
+  pointer-events: none;
+}
+[data-drop-zone="antes"]::before {
+  top: -1px;
+}
+[data-drop-zone="despues"]::after {
+  bottom: -1px;
+}
+[data-drop-zone="dentro"],
+[data-drop-file] {
+  background: rgb(var(--accent) / 0.08);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.6);
+}
+[data-section-drop][data-drop-zone="dentro"] {
+  background: rgb(var(--accent) / 0.06);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent) / 0.5);
+  border-radius: 4px;
+}
+
+/* Buscar en la página: todas las coincidencias y la activa, sin tocar el
+   documento (CSS Custom Highlight API, Chromium 105+). */
+::highlight(nook-find) {
+  background-color: rgb(var(--accent) / 0.16);
+}
+
+::highlight(nook-find-actual) {
+  background-color: #ffd75e;
+  color: #1c1c1c;
+}
+
+/* El bloque al que se salta desde la búsqueda: se marca un momento y se va. */
+[data-hit] {
+  box-shadow: 0 0 0 2px rgb(var(--accent) / 0.55);
+  border-radius: 4px;
+  transition: box-shadow 120ms ease-out;
 }

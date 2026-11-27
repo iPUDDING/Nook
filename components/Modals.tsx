@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import Icon from "./Icon";
-import { Avatar, MenuItem, Popover } from "./ui";
+import PageIcon from "./PageIcon";
+import { Avatar, MenuItem, MenuSeparator, Popover } from "./ui";
 import { useStore } from "@/lib/store";
-import { PEOPLE } from "@/lib/seed";
-import { cx, relativeTime } from "@/lib/utils";
+import { inferTitle, markdownToBlocks } from "@/lib/markdown";
+import { MEMBER_ROLE_LABEL, MEMBER_ROLES, type MemberRole } from "@/lib/types";
+import { cx, relativeTime, uid } from "@/lib/utils";
 
 export function Shell({
   title,
@@ -43,89 +45,177 @@ export function Shell({
 }
 
 /* ------------------------------- Compartir -------------------------------- */
+
+/**
+ * Miembros del workspace y compartir la página.
+ *
+ * **No hay límite de miembros**: la lista es abierta y se guarda en el estado
+ * persistido. El propietario no se puede quitar (quedaría un workspace sin
+ * dueño); el resto se puede invitar, cambiar de rol o sacar en cualquier momento.
+ */
 export function ShareModal() {
   const open = useStore((s) => s.shareOpen);
   const setUI = useStore((s) => s.setUI);
   const page = useStore((s) => s.pages[s.selectedId]);
-  const [invited, setInvited] = useState<string[]>([]);
+  const members = useStore((s) => s.members);
+  const inviteMember = useStore((s) => s.inviteMember);
+  const setMemberRole = useStore((s) => s.setMemberRole);
+  const removeMember = useStore((s) => s.removeMember);
+
   const [email, setEmail] = useState("");
-  const [permOpen, setPermOpen] = useState(false);
-  const [perm, setPerm] = useState("Puede editar");
+  const [role, setRole] = useState<MemberRole>("editor");
+  const [roleOpen, setRoleOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [whoOpen, setWhoOpen] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
 
   if (!open || !page) return null;
+
+  const invite = () => {
+    if (!email.trim()) return;
+    const res = inviteMember({ email, role });
+    if (!res.ok) {
+      setError(res.error ?? "No se pudo invitar.");
+      return;
+    }
+    setError(null);
+    setEmail("");
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard?.writeText(`https://nook.local/?p=${page.id}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
     <Shell
       title="Compartir"
       subtitle={page.title || "Sin título"}
       onClose={() => setUI({ shareOpen: false })}
-      width={560}
+      width={580}
     >
-      <div className="mb-3 flex items-center gap-2">
+      {/* ------------------------------ invitar ------------------------------ */}
+      <div className="flex items-start gap-2">
         <input
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setError(null);
+          }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && email.trim()) {
-              setInvited((v) => [...v, email.trim()]);
-              setEmail("");
+            if (e.key === "Enter") {
+              e.preventDefault();
+              invite();
             }
           }}
           placeholder="Invitá por correo…"
+          aria-label="Correo del nuevo miembro"
           className="h-[36px] flex-1 rounded-[4px] border border-line bg-surface px-2.5 text-[14px] outline-none placeholder:text-fg/35 focus:border-accent/60"
         />
         <div className="relative">
           <button
             type="button"
-            onClick={() => setPermOpen((v) => !v)}
+            onClick={() => setRoleOpen((v) => !v)}
             className="flex h-[36px] items-center gap-1 rounded-[4px] border border-line px-2.5 text-[13px] text-fg/75 hover:bg-surface-hover"
           >
-            {perm}
+            {MEMBER_ROLE_LABEL[role]}
             <Icon name="chevron-down" size={12} />
           </button>
-          <Popover open={permOpen} onClose={() => setPermOpen(false)} align="end" width={200}>
-            {["Puede ver", "Puede comentar", "Puede editar", "Control total"].map((p) => (
-              <MenuItem key={p} active={p === perm} onClick={() => { setPerm(p); setPermOpen(false); }}>
-                {p}
+          <Popover open={roleOpen} onClose={() => setRoleOpen(false)} align="end" width={200}>
+            {MEMBER_ROLES.filter((r) => r !== "owner").map((r) => (
+              <MenuItem
+                key={r}
+                active={r === role}
+                onClick={() => {
+                  setRole(r);
+                  setRoleOpen(false);
+                }}
+              >
+                {MEMBER_ROLE_LABEL[r]}
               </MenuItem>
             ))}
           </Popover>
         </div>
         <button
           type="button"
-          onClick={() => {
-            if (email.trim()) {
-              setInvited((v) => [...v, email.trim()]);
-              setEmail("");
-            }
-          }}
+          onClick={invite}
           className="h-[36px] rounded-[4px] bg-accent px-3 text-[13px] font-medium text-white hover:opacity-90"
         >
           Invitar
         </button>
       </div>
+      {error && <div className="mt-1.5 text-[12px] text-[#eb5757]">{error}</div>}
 
-      <div className="mb-4 space-y-1.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-fg/40">Con acceso</div>
-        {PEOPLE.slice(0, 3).map((p) => (
-          <div key={p.id} className="flex items-center gap-2 py-0.5">
-            <Avatar person={p} size={22} />
-            <span className="text-[14px] text-fg/85">{p.name}</span>
-            <span className="ml-auto text-[12px] text-fg/40">Puede editar</span>
-          </div>
-        ))}
-        {invited.map((mail) => (
-          <div key={mail} className="flex items-center gap-2 py-0.5">
-            <span className="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-surface-hover text-[10px] text-fg/60">
-              @
-            </span>
-            <span className="text-[14px] text-fg/85">{mail}</span>
-            <span className="ml-auto text-[12px] text-fg/40">{perm}</span>
-          </div>
-        ))}
+      {/* ---------------------------- con acceso ---------------------------- */}
+      <div className="mb-4 mt-4 space-y-0.5">
+        <div className="mb-1 flex items-baseline justify-between">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-fg/40">
+            Con acceso
+          </span>
+          <span className="text-[11px] text-fg/35">
+            {members.length} {members.length === 1 ? "miembro" : "miembros"} · sin límite
+          </span>
+        </div>
+
+        <div className="max-h-[260px] overflow-y-auto pr-1">
+          {members.map((m) => (
+            <div key={m.id} className="group flex items-center gap-2 rounded-[4px] py-1 hover:bg-surface-hover/60">
+              <Avatar person={m} size={24} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] text-fg/90">
+                  {m.name}
+                  {m.pending && <span className="ml-1.5 text-[11px] text-fg/35">invitado</span>}
+                </span>
+                <span className="block truncate text-[11.5px] text-fg/40">{m.email}</span>
+              </span>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setWhoOpen((v) => (v === m.id ? null : m.id))}
+                  className="flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[12.5px] text-fg/55 hover:bg-surface-hover hover:text-fg/80"
+                >
+                  {MEMBER_ROLE_LABEL[m.role]}
+                  {m.role !== "owner" && <Icon name="chevron-down" size={11} />}
+                </button>
+                {m.role !== "owner" && (
+                  <Popover open={whoOpen === m.id} onClose={() => setWhoOpen(null)} align="end" width={190}>
+                    {MEMBER_ROLES.filter((r) => r !== "owner").map((r) => (
+                      <MenuItem
+                        key={r}
+                        active={r === m.role}
+                        onClick={() => {
+                          setMemberRole(m.id, r);
+                          setWhoOpen(null);
+                        }}
+                      >
+                        {MEMBER_ROLE_LABEL[r]}
+                      </MenuItem>
+                    ))}
+                    <MenuSeparator />
+                    <MenuItem
+                      onClick={() => {
+                        removeMember(m.id);
+                        setWhoOpen(null);
+                      }}
+                    >
+                      Quitar del workspace
+                    </MenuItem>
+                  </Popover>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
+      {/* --------------------------- publicar en web ------------------------ */}
       <div className="rounded-[6px] border border-line p-3">
         <div className="flex items-center gap-2">
           <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[4px] bg-surface-hover text-[13px]">🌐</span>
@@ -156,13 +246,125 @@ export function ShareModal() {
       <div className="mt-4 flex items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => navigator.clipboard?.writeText(`${location.origin}/?p=${page.id}`)}
+          onClick={copyLink}
           className="flex h-[32px] items-center gap-1.5 rounded-[4px] border border-line px-2.5 text-[13px] text-fg/75 hover:bg-surface-hover"
         >
-          <Icon name="link" size={14} /> Copiar enlace
+          <Icon name={copied ? "check" : "link"} size={14} />
+          {copied ? "Enlace copiado" : "Copiar enlace"}
         </button>
         <span className="text-[12px] text-fg/35">Demo local: no se envía ningún correo.</span>
       </div>
+    </Shell>
+  );
+}
+
+/* ----------------------------- Pegar Markdown ------------------------------ */
+
+/**
+ * Pegar Markdown como texto, sin pasar por un archivo.
+ *
+ * Ruta rápida: el editor ya convierte el portapapeles al pegar (⌘V). Este modal
+ * existe para cuando el texto lo tenés en otro lado (un chat, un ticket) y
+ * querés revisarlo antes de insertarlo, o directamente crear una página nueva.
+ */
+export function PasteMarkdownModal() {
+  const open = useStore((s) => s.pasteOpen);
+  const setUI = useStore((s) => s.setUI);
+  const page = useStore((s) => s.pages[s.selectedId]);
+  const selectedId = useStore((s) => s.selectedId);
+  const insertBlocks = useStore((s) => s.insertBlocks);
+  const createPage = useStore((s) => s.createPage);
+  const selectPage = useStore((s) => s.selectPage);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) return null;
+
+  const parsed = () => {
+    if (!text.trim()) return [];
+    return markdownToBlocks(text, () => uid("blk"));
+  };
+
+  const preview = text.trim() ? parsed() : [];
+  const tables = preview.filter((b) => b.type === "table").length;
+
+  const insertHere = () => {
+    if (!page) return;
+    const blocks = parsed();
+    if (!blocks.length) {
+      setError("Pegá algo de Markdown primero.");
+      return;
+    }
+    insertBlocks(page.id, page.blocks[page.blocks.length - 1]?.id ?? null, blocks);
+    setUI({ pasteOpen: false });
+    setText("");
+  };
+
+  const createNewPage = () => {
+    const blocks = parsed();
+    if (!blocks.length) {
+      setError("Pegá algo de Markdown primero.");
+      return;
+    }
+    const id = createPage(null, { title: inferTitle(blocks, "Markdown pegado"), blocks });
+    selectPage(id);
+    setUI({ pasteOpen: false });
+    setText("");
+  };
+
+  return (
+    <Shell
+      title="Pegar Markdown"
+      subtitle="Se convierte en bloques reales: títulos, listas, citas, código y tablas."
+      onClose={() => setUI({ pasteOpen: false })}
+      width={640}
+    >
+      <textarea
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setError(null);
+        }}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            insertHere();
+          }
+        }}
+        placeholder={"# Título\n\nTexto con **negrita**.\n\n| Columna | Otra |\n| --- | --- |\n| a | b |"}
+        aria-label="Markdown a convertir"
+        className="h-[260px] w-full resize-none rounded-[6px] border border-line bg-surface px-3 py-2 font-mono text-[12.5px] leading-[1.6] text-fg outline-none placeholder:text-fg/25 focus:border-accent/60"
+      />
+
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <span className="text-[12px] text-fg/45">
+          {preview.length
+            ? `${preview.length} bloque${preview.length === 1 ? "" : "s"}${tables ? ` · ${tables} tabla${tables === 1 ? "" : "s"}` : ""}`
+            : error ?? "Nada para convertir todavía."}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={createNewPage}
+            className="h-[32px] rounded-[4px] border border-line px-2.5 text-[13px] text-fg/75 hover:bg-surface-hover"
+          >
+            Crear página
+          </button>
+          <button
+            type="button"
+            onClick={insertHere}
+            className="h-[32px] rounded-[4px] bg-accent px-3 text-[13px] font-medium text-white hover:opacity-90"
+          >
+            Insertar acá
+          </button>
+        </div>
+      </div>
+
+      <p className="mt-3 text-[12px] leading-relaxed text-fg/40">
+        También podés pegar directo en el editor con ⌘V / Ctrl+V: si el texto parece Markdown, se
+        convierte solo. Este panel es para revisarlo antes o crear una página nueva
+        ({selectedId.slice(0, 6)}…).
+      </p>
     </Shell>
   );
 }
@@ -179,6 +381,8 @@ export function ShortcutsModal() {
         ["⌘ K", "Buscar o ejecutar un comando"],
         ["⌘ \\", "Mostrar u ocultar la barra lateral"],
         ["⌘ ⇧ L", "Modo oscuro"],
+        ["⌘ V", "Pegar Markdown: se convierte en bloques (y tablas) solo"],
+        ["F11", "Pantalla completa"],
         ["Esc", "Cerrar menú o diálogo"],
       ],
     },
@@ -186,6 +390,7 @@ export function ShortcutsModal() {
       title: "Lectura y foco",
       rows: [
         ["⌘ ⇧ R", "Leer la página en voz alta"],
+        ["Clic derecho", "Empezar a leer desde ese párrafo"],
         ["Espacio", "Pausar o reanudar la voz"],
         ["⌘ ⇧ E", "Modo lectura (papel)"],
         ["⌘ ⇧ M", "Mapa mental de la página"],
@@ -258,7 +463,9 @@ export function TrashModal() {
           <div className="divide-y divide-line rounded-[6px] border border-line">
             {trashed.map((p) => (
               <div key={p.id} className="flex items-center gap-2 px-2.5 py-2">
-                <span className="text-[14px]">{p.icon ?? "📄"}</span>
+                <span className="flex items-center text-[14px]">
+                  {p.icon ? <PageIcon icon={p.icon} size={15} /> : "📄"}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] text-fg">{p.title || "Sin título"}</div>
                   <div className="text-[11.5px] text-fg/40">Eliminada {relativeTime(p.updatedAt)}</div>

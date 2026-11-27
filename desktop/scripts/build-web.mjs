@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Genera el export estático de Next (carpeta `out/`) que Electron empaqueta.
  *
@@ -9,11 +7,16 @@
  *     de forma multiplataforma y produce `out/`.
  */
 
-const { spawnSync } = require('node:child_process');
-const path = require('node:path');
-const fs = require('node:fs');
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const webRoot = path.resolve(__dirname, '..', '..');
+// Este archivo es un módulo ES (`.mjs` viene con "type": "module" del paquete):
+// no hay `require` ni `__dirname`, y usarlos rompía el build con
+// "ReferenceError: require is not defined in ES module scope".
+const here = path.dirname(fileURLToPath(import.meta.url));
+const webRoot = path.resolve(here, '..', '..');
 const script = path.join(webRoot, 'scripts', 'export-static.mjs');
 
 if (!fs.existsSync(script)) {

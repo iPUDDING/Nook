@@ -35,7 +35,21 @@ export type BlockType =
   | "quote"
   | "callout"
   | "divider"
-  | "code";
+  | "code"
+  | "table";
+
+/**
+ * Datos de un bloque `table`.
+ *
+ * Las celdas guardan **HTML inline** (lo mismo que el resto de los bloques), así
+ * una tabla importada de Markdown conserva negritas, código y enlaces.
+ * `align` refleja la fila de alineación de GFM (`:---`, `:---:`, `---:`).
+ */
+export interface TableData {
+  header: string[];
+  rows: string[][];
+  align?: ("left" | "center" | "right")[];
+}
 
 export interface Block {
   id: string;
@@ -50,6 +64,8 @@ export interface Block {
   indent?: number;
   /** color de fondo, usado por callout */
   color?: ColorKey;
+  /** sólo para type === "table" */
+  table?: TableData;
 }
 
 export type PropType =
@@ -77,13 +93,42 @@ export interface Property {
 
 export type CellValue = string | number | boolean | null;
 
+/** Cada cuánto vuelve una fila que se repite. */
+export interface Repeticion {
+  cada: number;
+  unidad: "dia" | "semana" | "mes" | "anio";
+}
+
 export interface DbRow {
   id: string;
   cells: Record<string, CellValue>;
   createdAt: number;
+  /**
+   * Repetición de la fila. La fila **es** la tarea: no se duplica en plantillas
+   * como en la app de referencia, se mueve a la próxima fecha al completarla, y
+   * el calendario dibuja sus próximas apariciones por adelantado.
+   */
+  repeat?: Repeticion;
 }
 
-export type DbView = "table" | "board" | "list";
+/**
+ * Vistas de una base de datos. Las de Notion que tienen sentido local:
+ * tabla, board, lista, **galería** y **línea de tiempo**.
+ * (Cronograma con dependencias y gráficos quedan fuera: exigen modelo de rangos
+ * y un motor de cálculo que no aporta a una app de notas.)
+ */
+export type DbView = "table" | "board" | "list" | "gallery" | "timeline" | "calendar";
+
+/** Filtro, orden y agrupación de una vista concreta. */
+export interface ViewConfig {
+  groupBy: string;
+  sorts: { propertyId: string; dir: "asc" | "desc" }[];
+  filter: { propertyId: string; optionId: string } | null;
+  /** propiedades ocultas en esta vista */
+  ocultas: string[];
+  /** ancho de cada columna de la tabla, por id de propiedad */
+  anchos: Record<string, number>;
+}
 
 export interface Database {
   properties: Property[];
@@ -93,12 +138,42 @@ export interface Database {
   groupBy: string;
   sorts: { propertyId: string; dir: "asc" | "desc" }[];
   filter: { propertyId: string; optionId: string } | null;
+  /**
+   * Configuración guardada de cada vista.
+   *
+   * En la app de referencia cada vista tiene su propio filtro, orden y
+   * agrupación: filtrar la tabla no cambia el board. Como en Nook las vistas son
+   * seis pestañas fijas y no vistas con nombre, al cambiar de pestaña se guarda
+   * la configuración de la que se deja y se restaura la de la que se abre.
+   */
+  viewConfig?: Partial<Record<DbView, ViewConfig>>;
+  /** propiedades ocultas en la vista actual (se guarda por vista) */
+  ocultas?: string[];
+  /** ancho de las columnas de la tabla en la vista actual (se guarda por vista) */
+  anchos?: Record<string, number>;
 }
 
 export interface Page {
   id: string;
   title: string;
   icon: string | null;
+  /**
+   * Una carpeta es una página sin cuerpo: agrupa páginas hijas y archivos.
+   *
+   * Se modela como una página y no como una entidad aparte porque el árbol, el
+   * arrastre, la papelera, el historial y el respaldo ya funcionan con páginas:
+   * inventar un segundo tipo de nodo obligaba a duplicar todo eso. Lo único que
+   * cambia es qué se dibuja a la derecha del título.
+   */
+  isFolder?: boolean;
+  /**
+   * Página bloqueada: se ve igual pero no se puede editar hasta desbloquearla.
+   *
+   * Es la protección contra el «toqué algo sin querer» que en la app de
+   * referencia no tiene atajo de teclado (una queja de años): acá se activa y se
+   * saca con ⌘⇧B.
+   */
+  locked?: boolean;
   cover: string | null;
   parentId: string | null;
   order: number;
@@ -109,6 +184,27 @@ export interface Page {
   trashed: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * Metadatos de un archivo adjunto.
+ *
+ * Los metadatos viajan en el workspace (y en el respaldo JSON, que es texto); el
+ * contenido binario vive en **IndexedDB**, porque un PDF de 3 MB no entra en la
+ * cuota de `localStorage` y meterlo ahí dejaría al usuario sin poder guardar ni
+ * una nota.
+ */
+export interface FileMeta {
+  id: string;
+  /** nombre original, con extensión */
+  name: string;
+  /** tipo MIME tal como lo reporta el sistema ("" si no lo sabe) */
+  mime: string;
+  /** tamaño en bytes */
+  size: number;
+  /** carpeta que lo contiene; `null` = suelto en la raíz */
+  folderId: string | null;
+  createdAt: number;
 }
 
 export interface Person {
@@ -207,3 +303,46 @@ export const DEFAULT_POMODORO: PomodoroPrefs = {
 };
 
 export const DEFAULT_BAR: BarPos = { dock: "float", x: -1, y: -1 };
+
+/* ========================================================================== */
+/*                          Miembros del workspace                            */
+/* ========================================================================== */
+
+/**
+ * Roles de un miembro. El workspace **no tiene límite de miembros**: la lista
+ * crece sin tope y vive en el estado persistido.
+ */
+export type MemberRole = "owner" | "admin" | "editor" | "commenter" | "viewer";
+
+export const MEMBER_ROLES: MemberRole[] = ["owner", "admin", "editor", "commenter", "viewer"];
+
+export const MEMBER_ROLE_LABEL: Record<MemberRole, string> = {
+  owner: "Propietario",
+  admin: "Administrador",
+  editor: "Puede editar",
+  commenter: "Puede comentar",
+  viewer: "Puede ver",
+};
+
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  /** iniciales para el avatar (máx. 2 letras) */
+  initials: string;
+  color: ColorKey;
+  role: MemberRole;
+  /** ISO date de alta */
+  joinedAt: string;
+  /** invitación enviada, todavía no aceptó */
+  pending?: boolean;
+}
+
+/** Iniciales a partir de un nombre o de un correo. */
+export function initialsOf(name: string): string {
+  const clean = name.trim();
+  if (!clean) return "?";
+  const parts = clean.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return clean.slice(0, 2).toUpperCase();
+}

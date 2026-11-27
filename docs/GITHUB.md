@@ -51,15 +51,15 @@ Actions de por medio**. Los artifacts de Actions requieren cuenta y expiran a lo
 30 días; un Release es una página pública y permanente.
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.10.0
+git push origin v0.10.0
 ```
 
 Eso dispara el workflow **release**, que:
 
 1. compila el `.exe` portable y el instalador en `windows-latest`;
 2. comprime la web estática;
-3. crea un **Release** en `https://github.com/OWNER/REPO/releases/tag/v0.2.2`
+3. crea un **Release** en `https://github.com/OWNER/REPO/releases/tag/v0.10.0`
    con los tres archivos adjuntos y las notas generadas automáticamente.
 
 Al terminar, el enlace para compartir es:
@@ -124,5 +124,5 @@ interfaz de Notion hecho por gusto técnico, y que el `.exe` no está firmado
 | Pages muestra 404 en `/REPO/` | Pages no está en "GitHub Actions", o `BASE_PATH` no coincide con el nombre del repo | revisar Settings → Pages y la sección *Generar out/* del run |
 | Pages carga sin estilos | faltó `BASE_PATH` en repos de proyecto | definir la variable o dejar que el workflow la calcule |
 | El Release sale sin archivos | el build falló o el patrón no matcheó | mirar el job `windows`; `fail_on_unmatched_files: true` corta el run a propósito |
-| Release "desactualizado" | se taggeó dos veces el mismo nombre | borrar el tag (`git tag -d v0.2.2 && git push --delete origin v0.2.2`) y volver a crearlo |
+| Release "desactualizado" | se taggeó dos veces el mismo nombre | borrar el tag (`git tag -d v0.10.0 && git push --delete origin v0.10.0`) y volver a crearlo |
 | El `.exe` no abre en otra PC | es x64 | pedir Windows 10/11 de 64 bits; no hay build para ARM |

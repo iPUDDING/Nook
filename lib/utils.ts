@@ -124,12 +124,20 @@ export function ancestorsOf(pages: Record<string, Page>, id: string): Page[] {
   return out;
 }
 
-/** Todas las páginas descendientes (para borrar/mover en bloque) */
+/**
+ * Todas las páginas descendientes (para borrar/mover en bloque).
+ *
+ * `seen` no es decorativo: un respaldo corrupto puede traer dos páginas que se
+ * apuntan como padre entre sí (`a.parentId = b`, `b.parentId = a`). Sin el
+ * registro, esta recursión no termina y la app se cuelga al vaciar la papelera.
+ */
 export function descendantsOf(pages: Record<string, Page>, id: string): string[] {
   const out: string[] = [];
+  const seen = new Set<string>([id]);
   const walk = (pid: string) => {
     for (const p of Object.values(pages)) {
-      if (p.parentId === pid) {
+      if (p.parentId === pid && !seen.has(p.id)) {
+        seen.add(p.id);
         out.push(p.id);
         walk(p.id);
       }
@@ -203,4 +211,25 @@ export function safeFileName(title: string, extension: string): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 60) || "sin-titulo";
   return `${base}.${extension}`;
+}
+
+/**
+ * Pantalla completa del documento (F11).
+ *
+ * Se usa la Fullscreen API y no una ventana de Electron a propósito: así el
+ * mismo atajo funciona en el navegador y dentro del `.exe`.
+ */
+export async function toggleFullscreen(): Promise<boolean> {
+  if (typeof document === "undefined") return false;
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return false;
+    }
+    await document.documentElement.requestFullscreen();
+    return true;
+  } catch {
+    // el navegador puede rechazarlo si no hay gesto de usuario
+    return false;
+  }
 }

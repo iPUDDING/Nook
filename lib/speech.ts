@@ -10,6 +10,7 @@
  * un navegador: acá no hay `speechSynthesis` ni DOM.
  */
 
+import { tableToText } from "./table";
 import type { Block } from "./types";
 
 export interface SpeechSegment {
@@ -246,6 +247,14 @@ export function buildSegments(title: string, blocks: Block[]): SpeechSegment[] {
 
   for (const block of blocks) {
     if (SILENT.includes(block.type)) continue;
+
+    // Una tabla no se lee "como tabla": se lee "columna: valor" por fila.
+    if (block.type === "table") {
+      const text = tableToText(block.table ?? { header: [], rows: [] });
+      if (text) push(block.id, text);
+      continue;
+    }
+
     const text = htmlToText(block.html);
     if (text) push(block.id, text);
   }

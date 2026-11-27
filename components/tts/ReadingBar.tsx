@@ -34,7 +34,9 @@ export default function ReadingBar() {
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const { status, chars, elapsed, remaining, label } = speech;
+  const { status, chars, elapsed, remaining, label, segments, index } = speech;
+  /** frase que se está leyendo ahora: la barra también dice "por dónde va" */
+  const sentence = status === "idle" ? "" : segments[index]?.text ?? "";
   const visible = status !== "idle";
 
   /* ------------------------- posición inicial válida ------------------------ */
@@ -233,6 +235,14 @@ export default function ReadingBar() {
       role="region"
       aria-label="Controles de lectura en voz alta"
     >
+      {/* frase actual */}
+      {sentence && (
+        <div className="mt-1.5 max-h-[54px] overflow-hidden rounded-[6px] bg-accent/[0.07] px-2 py-1.5 text-[11.5px] leading-[1.45] text-fg/70">
+          <span className="mr-1 text-accent">▸</span>
+          {sentence}
+        </div>
+      )}
+
       {/* cabecera */}
       <div className="flex items-center gap-1">
         <Grip />

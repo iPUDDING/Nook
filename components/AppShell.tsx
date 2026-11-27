@@ -1,9 +1,11 @@
 "use client";
 
+import { tomarCopia } from "@/lib/backups";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CommandPalette from "./CommandPalette";
+import HistoryModal from "./HistoryModal";
 import MindMap from "./mindmap/MindMap";
-import { ShareModal, ShortcutsModal, TrashModal } from "./Modals";
+import { PasteMarkdownModal, ShareModal, ShortcutsModal, TrashModal } from "./Modals";
 import PageView from "./PageView";
 import { PomodoroLayer, PomodoroProvider, usePomodoro } from "./pomodoro/Pomodoro";
 import SettingsModal from "./Settings";
@@ -14,7 +16,7 @@ import ReadingBar from "./tts/ReadingBar";
 import { useReadAloud } from "./tts/useReadAloud";
 import { Skeleton } from "./ui";
 import { useStore } from "@/lib/store";
-import { cx } from "@/lib/utils";
+import { cx, toggleFullscreen } from "@/lib/utils";
 
 export default function AppShell() {
   return (
@@ -50,6 +52,16 @@ function Workspace() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
+
+  /**
+   * En pantallas angostas la barra lateral fija se come la página: con 390 px de
+   * ancho el editor quedaba en 84 px. Se arranca con la barra cerrada (el botón
+   * para abrirla sigue estando) en lugar de empujar el contenido a una columna
+   * inservible.
+   */
+  useEffect(() => {
+    if (window.innerWidth < 768 && useStore.getState().sidebarOpen) toggleSidebar();
+  }, [toggleSidebar]);
 
   /* ------------------------------- tema / UI ------------------------------- */
   useEffect(() => {
@@ -90,6 +102,16 @@ function Workspace() {
     };
   }, [selectedId, savePosition]);
 
+  /* ------------------------ copias automáticas ---------------------------- */
+  // Una foto del workspace al arrancar y cada cinco minutos; `tomarCopia` no
+  // guarda nada si el contenido no cambió, así que no llena el espacio de copias
+  // repetidas. Es lo que en la app de referencia hay que hacer a mano con un ZIP.
+  useEffect(() => {
+    tomarCopia();
+    const tic = window.setInterval(() => tomarCopia(), 5 * 60 * 1000);
+    return () => window.clearInterval(tic);
+  }, []);
+
   /* ---------------------------- atajos globales ---------------------------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -99,6 +121,12 @@ function Workspace() {
         !!target &&
         (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
+      // F11: pantalla completa (funciona en el navegador y en el .exe)
+      if (e.key === "F11") {
+        e.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setUI({ paletteOpen: true });
@@ -134,6 +162,31 @@ function Workspace() {
         pomodoro.setPanelOpen(!pomodoro.panelOpen);
         return;
       }
+      // Zoom del contenido: ⌘+ / ⌘- / ⌘0, como en un navegador
+      if (mod && (e.key === "+" || e.key === "=" || e.key === "Add")) {
+        e.preventDefault();
+        const st = useStore.getState();
+        st.setZoom(st.zoom + 10);
+        return;
+      }
+      if (mod && (e.key === "-" || e.key === "Subtract")) {
+        e.preventDefault();
+        const st = useStore.getState();
+        st.setZoom(st.zoom - 10);
+        return;
+      }
+      if (mod && e.key === "0") {
+        e.preventDefault();
+        useStore.getState().setZoom(100);
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "b") {
+        // el atajo que la app de referencia nunca agregó: bloquear / desbloquear
+        e.preventDefault();
+        const id = useStore.getState().selectedId;
+        if (id) useStore.getState().toggleLock(id);
+        return;
+      }
       if (mod && e.key === ",") {
         e.preventDefault();
         setUI({ settingsOpen: true });
@@ -158,6 +211,8 @@ function Workspace() {
         return;
       }
       if (e.key === "Escape") {
+        // Todo modal que se abre con una acción entra en esta lista: el que
+        // faltaba (pegar Markdown) quedaba abierto tapando el editor.
         setUI({
           paletteOpen: false,
           shareOpen: false,
@@ -166,16 +221,54 @@ function Workspace() {
           trashOpen: false,
           peekRowId: null,
           mindmapOpen: false,
+          pasteOpen: false,
+          historyOpen: false,
         });
+        // el panel de Pomodoro no vive en el store de la UI: se cierra por su
+        // propio contexto, y sin esto era el único overlay que ignoraba Escape
+        pomodoro.setPanelOpen(false);
+        // en Electron Escape no sale de la pantalla completa por sí solo
+        if (typeof document !== "undefined" && document.fullscreenElement) {
+          void document.exitFullscreen();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setTheme, toggleSidebar, setUI, readPage, setReading, speech, pomodoro]);
 
+  // Historial de versiones: se carga una vez y luego se toma una foto de cada
+  // página que cambia, con un respiro de 4 s para no crear una versión por tecla.
+  useEffect(() => {
+    useStore.getState().hydrateVersions();
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const unsub = useStore.subscribe((state, prev) => {
+      if (state.pages === prev.pages) return;
+      for (const id of Object.keys(state.pages)) {
+        const antes = prev.pages[id];
+        const ahora = state.pages[id];
+        if (!ahora || antes === ahora || antes?.updatedAt === ahora.updatedAt) continue;
+        const pendiente = timers.get(id);
+        if (pendiente) clearTimeout(pendiente);
+        timers.set(
+          id,
+          setTimeout(() => {
+            timers.delete(id);
+            useStore.getState().captureVersion(id);
+          }, 4000),
+        );
+      }
+    });
+    return () => {
+      unsub();
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, []);
+
   if (!mounted) return <Skeleton />;
 
   const paper = reading.mode ? reading.paper : undefined;
+
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-surface">
@@ -226,9 +319,11 @@ function Workspace() {
       <MindMap open={mindmapOpen} onClose={() => setUI({ mindmapOpen: false })} page={page ?? PLACEHOLDER} />
       <CommandPalette />
       <ShareModal />
+      <PasteMarkdownModal />
       <SettingsModal />
       <ShortcutsModal />
       <TrashModal />
+      <HistoryModal />
     </div>
   );
 }

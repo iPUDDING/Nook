@@ -8,6 +8,12 @@
 
 ![Nook en modo claro](./docs/capturas/01-inicio-claro.png)
 
+| Tablas y resaltado de lectura | Miembros sin límite |
+|---|---|
+| ![Tabla con la frase activa resaltada](./docs/capturas/18-tabla-y-lectura.png) | ![Panel de miembros sin límite](./docs/capturas/19-miembros-sin-limite.png) |
+
+![Suscripción: plan activo con todas las capacidades habilitadas](./docs/capturas/21-plan-suscripcion.png)
+
 Clon funcional de la app de Notion (no de su web): **editor de bloques, bases de
 datos con tres vistas, páginas anidadas, favoritos, papelera, ⌘K y modo oscuro**
 — y, desde la versión 0.2, una capa completa de **lectura y foco**:
@@ -16,6 +22,46 @@ papel, mapas mentales, Pomodoro compartido e importación/exportación de archiv
 
 Next.js 15 (App Router) + React 19 + TypeScript + Tailwind + Zustand.
 **Cero dependencias de UI, cero assets externos, cero tipografías de terceros.**
+
+**Nuevo en 0.10.0:** **carpetas** en el árbol —agrupan páginas y **archivos
+adjuntos**— con subida por botón o arrastrando, visor para imágenes, PDF, audio,
+vídeo y texto, renombrar, mover y eliminar. Los adjuntos guardan su contenido en
+IndexedDB, así que un PDF grande no te deja sin espacio para las notas. **84
+verificaciones** en ocho suites.
+
+**0.6.0:** ronda de auditoría — escrituras agrupadas en disco
+(el editor dejó de reescribir el workspace entero en cada tecla: 40 escrituras y
+126 ms por 20 letras pasaron a **1** y 4 ms), **exportación completa** del
+workspace en un HTML con índice, y siete fallos reales corregidos, entre ellos
+uno de seguridad: el historial de versiones se sanea al cargar. **73
+verificaciones** en siete suites.
+
+**0.5.0:** **historial de versiones por página** con la retención de
+cada plan de Notion — 7 días en Gratis, **30** en Pro, **90** en Business y sin
+límite en Enterprise. Se guarda solo mientras escribís, restaurar es reversible
+(antes de pisar el documento se guarda cómo estaba) y el historial vive en su
+propia clave de almacenamiento, así que nunca puede dejarte sin espacio para
+tus notas.
+
+**0.4.3:** la lectura en voz alta **subraya por donde va** (también con
+voces que no emiten eventos), se puede **empezar a leer desde cualquier párrafo**
+con clic derecho, y **F11** pone la app en pantalla completa.
+
+**0.4.2:** dos rondas de auditoría sobre 0.4.0 — el HTML del editor se
+sanea por lista blanca (un pegado con formato o un respaldo ajeno ya no puede
+inyectar código), el respaldo incluye los miembros, el mapa mental respeta la
+sangría, las listas del HTML exportado son válidas y ningún overlay ignora
+Escape. **46 verificaciones automatizadas** en cinco suites, todas en CI
+([detalles](./CHANGELOG.md)).
+
+**0.4.0:** la app se entrega con la **suscripción activa** — plan Business,
+todas las capacidades habilitadas y **sin topes** — administrable en
+*Configuración → Plan* y activable con una licencia offline
+([detalles](./docs/SUSCRIPCION.md)).
+
+**0.3.0:** tablas reales (también al importar o pegar Markdown), **pegado de
+Markdown directo en el editor**, **miembros sin límite** y **resaltado frase por
+frase** mientras se lee en voz alta.
 
 > ### Descargar
 >
@@ -100,8 +146,13 @@ Motor propio sobre `speechSynthesis`, con las voces **que ya tenga el sistema**
 
 - **Botón ▶ de la barra superior o `⌘⇧R`**: lee el título y todos los bloques
   visibles. Si hay texto seleccionado, lee **la selección**.
-- **Resaltado sincronizado**: el párrafo que suena se marca en el documento y,
-  opcionalmente, la vista se desplaza sola. También resalta el título.
+- **Clic derecho sobre cualquier párrafo → “Empezar a leer desde aquí”**: arranca
+  en la frase que está justo debajo del puntero, no al principio de la página
+  (la segunda opción, “Leer este bloque”, empieza en el bloque entero).
+- **Resaltado sincronizado en dos capas**: la frase que suena se pinta suave y
+  lo que la voz **ya pronunció** se marca más fuerte, de modo que se ve el avance
+  palabra por palabra. El párrafo activo se marca aparte y la vista se desplaza
+  sola si hace falta. También resalta el título.
 - **Barra flotante de cristal esmerilado** con progreso, tiempo transcurrido y
   restante, palabras que faltan, fragmento actual, velocidad rápida y control de
   fragmento (anterior / repetir / siguiente / detener).
@@ -118,7 +169,11 @@ se trocea **por frases de menos de 180 caracteres** (Chrome deja de emitir
 `onend` en utterances largas), cada arranque invalida los callbacks viejos con un
 token de generación, y hay un perro guardián que avanza si `onend` nunca llega.
 La velocidad real (caracteres/segundo) se **calibra** con lo ya pronunciado, así
-el tiempo restante no es una constante.
+el tiempo restante no es una constante. El avance del subrayado **no depende de
+`onboundary`**: muchas voces del sistema (las SAPI de Windows dentro de Electron,
+por ejemplo) no emiten ese evento, así que un estimador alimentado por la
+velocidad medida mueve el resaltado y los eventos reales, cuando llegan, lo
+corrigen.
 
 ### Modo lectura
 `⌘⇧E` o el icono de libro. Oculta el chrome de edición (botones de portada,
@@ -175,7 +230,9 @@ exportar/importar respaldo, restablecer).
 | `⌘\` | Mostrar u ocultar la barra lateral |
 | `⌘⇧L` | Modo oscuro / claro |
 | `⌘⇧R` | Leer la página en voz alta |
+| `Clic derecho` | Empezar a leer desde ese párrafo |
 | `Espacio` | Pausar / reanudar la voz |
+| `F11` | Pantalla completa |
 | `⌘⇧E` | Modo lectura (papel) |
 | `⌘⇧M` | Mapa mental |
 | `⌘⇧P` | Pomodoro |
@@ -261,8 +318,38 @@ Ninguno necesita secretos ni variables de entorno.
 
 ## Verificación automática
 
+Hay **84 verificaciones** en ocho suites, cada una contra el sitio estático ya
+compilado (se sirve `out/` en el puerto 4321). Salen con código 1 si algo falla,
+así que sirven tanto a mano como en CI:
+
 ```bash
-npm run capturas     # requiere: npx playwright install chromium
+npm run build:static
+python3 -m http.server 4321 --directory out &
+
+node scripts/verificar-030.mjs      http://127.0.0.1:4321   #  15 — editor, tablas, pegado, export, mapa, arrastre, teclado
+node scripts/verificar-040.mjs      http://127.0.0.1:4321   #  12 — suscripción, licencias, topes, respaldo y export completo
+node scripts/verificar-seguridad.mjs http://127.0.0.1:4321  #  13 — saneo de HTML, datos corruptos y entradas basura
+node scripts/verificar-movil.mjs    http://127.0.0.1:4321   #   3 — ventanas angostas y scroll horizontal
+node scripts/verificar-modales.mjs  http://127.0.0.1:4321   #  11 — cada modal y el Pomodoro abren y cierran
+node scripts/verificar-lectura.mjs  http://127.0.0.1:4321   #   7 — seguimiento del subrayado, leer desde aquí, F11
+node scripts/verificar-historial.mjs http://127.0.0.1:4321  #  12 — versiones por página, retención, cuota llena, respaldo
+node scripts/verificar-carpetas.mjs http://127.0.0.1:4321  #  11 — carpetas, adjuntos, visor, topes, papelera, respaldo
+```
+
+Requiere `npx playwright install chromium`. El escritorio tiene su propia
+comprobación, que arranca el binario empaquetado y lo mira por CDP:
+
+```bash
+cd desktop && npx electron-builder --linux dir && cd ..
+xvfb-run -a node scripts/verificar-desktop.mjs desktop/release/linux-unpacked/nook-desktop
+```
+
+Todas corren en cada push (job `e2e` de `.github/workflows/ci.yml`).
+
+### Capturas
+
+```bash
+npm run capturas
 ```
 
 Recorre la app en Chromium headless, guarda **17 capturas** en `docs/capturas/` y
@@ -292,7 +379,7 @@ El resumen:
 4. **Taggear** para publicar la versión descargable:
 
    ```bash
-   git tag v0.2.2 && git push origin v0.2.2
+   git tag v0.6.0 && git push origin v0.6.0
    ```
 
    El workflow **release** compila el `.exe` y lo adjunta a
@@ -316,6 +403,7 @@ El resumen:
 - **Convivencia:** [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 - **Seguridad:** [SECURITY.md](./SECURITY.md) — reportes privados, no en issues.
 - **Historial de versiones:** [CHANGELOG.md](./CHANGELOG.md).
+- **Modelo de suscripción y licencias:** [docs/SUSCRIPCION.md](./docs/SUSCRIPCION.md).
 - **Publicar tu propio fork o release:** [docs/GITHUB.md](./docs/GITHUB.md).
 
 Licencia [MIT](./LICENSE): podés usarlo, modificarlo y redistribuirlo citando el

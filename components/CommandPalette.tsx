@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon, { type IconName } from "./Icon";
+import PageIcon from "./PageIcon";
 import { usePomodoro } from "./pomodoro/Pomodoro";
 import { useReadAloud } from "./tts/useReadAloud";
 import { pageToMarkdown } from "@/lib/markdown";
 import { useStore } from "@/lib/store";
-import { ancestorsOf, cx, downloadFile, safeFileName, visibleBlocks } from "@/lib/utils";
+import { buscarGlobal } from "@/lib/search";
+import { ancestorsOf, cx, downloadFile, safeFileName, toggleFullscreen, visibleBlocks } from "@/lib/utils";
 
 type Item = {
   id: string;
@@ -23,6 +25,7 @@ export default function CommandPalette() {
   const pages = useStore((s) => s.pages);
   const selectPage = useStore((s) => s.selectPage);
   const createPage = useStore((s) => s.createPage);
+  const createFolder = useStore((s) => s.createFolder);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const toggleFullWidth = useStore((s) => s.toggleFullWidth);
@@ -34,6 +37,8 @@ export default function CommandPalette() {
   const pomodoro = usePomodoro();
 
   const [q, setQ] = useState("");
+  /** dónde busca: todo el workspace o la rama de la página abierta */
+  const [alcance, setAlcance] = useState<"todo" | "rama">("todo");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -44,6 +49,40 @@ export default function CommandPalette() {
       setTimeout(() => inputRef.current?.focus(), 20);
     }
   }, [open]);
+
+  /**
+   * Coincidencias en el contenido: bloques y celdas de la base.
+   *
+   * Van como ítems más de la paleta para no duplicar el teclado, el resaltado y
+   * el «↵ abrir». Se calculan aparte porque dependen de lo que se escribe, y el
+   * resto de los ítems (comandos y páginas) no.
+   */
+  const hitItems = useMemo<Item[]>(() => {
+    if (q.trim().length < 2) return [];
+    const hits = buscarGlobal({ pages, consulta: q, alcance, raizId: selectedId, limite: 8 });
+    const icono = { bloque: "search", fila: "database", titulo: "file" } as const;
+    return hits.map((h, i) => ({
+      id: `hit-${h.pageId}-${h.blockId ?? h.rowId ?? "t"}-${i}`,
+      label: h.titulo,
+      sub: `${h.camino ? `${h.camino} · ` : ""}${h.extracto}`,
+      icon: icono[h.tipo],
+      run: () => {
+        selectPage(h.pageId);
+        setUI({ paletteOpen: false });
+        // se salta al bloque y se lo marca un momento, como el resaltado del
+        // resultado: sin eso, en una página larga quedás buscando a ojo
+        if (h.blockId) {
+          window.setTimeout(() => {
+            const el = document.querySelector(`[data-block-id="${h.blockId}"]`);
+            if (!el) return;
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            el.setAttribute("data-hit", "");
+            window.setTimeout(() => el.removeAttribute("data-hit"), 1800);
+          }, 160);
+        }
+      },
+    }));
+  }, [q, pages, alcance, selectedId, selectPage, setUI]);
 
   const items = useMemo<Item[]>(() => {
     const close = () => setUI({ paletteOpen: false });
@@ -79,6 +118,16 @@ export default function CommandPalette() {
         icon: theme === "dark" ? "sun" : "moon",
         run: () => {
           setTheme(theme === "dark" ? "light" : "dark");
+          close();
+        },
+      },
+      {
+        id: "fullscreen",
+        label: "Pantalla completa",
+        sub: "F11",
+        icon: "panel",
+        run: () => {
+          void toggleFullscreen();
           close();
         },
       },
@@ -168,6 +217,27 @@ export default function CommandPalette() {
         },
       },
       {
+        id: "new-folder",
+        label: "Nueva carpeta",
+        sub: "Agrupa páginas y archivos",
+        icon: "folder",
+        run: () => {
+          const id = createFolder(null);
+          selectPage(id);
+          close();
+        },
+      },
+      {
+        id: "history",
+        label: "Ver historial de versiones",
+        sub: "Volver a una versión anterior de la página",
+        icon: "clock",
+        run: () => {
+          setUI({ historyOpen: true });
+          close();
+        },
+      },
+      {
         id: "pomodoro",
         label: pomodoro.running ? "Pausar Pomodoro" : "Abrir Pomodoro",
         sub: `${pomodoro.running ? "En marcha" : "Enfocado"} · ⌘⇧P`,
@@ -176,6 +246,33 @@ export default function CommandPalette() {
           pomodoro.setPanelOpen(true);
           if (pomodoro.running) pomodoro.pause();
           else pomodoro.start();
+          close();
+        },
+      },
+      {
+        id: "paste-md",
+        label: "Pegar Markdown…",
+        icon: "copy",
+        run: () => {
+          setUI({ pasteOpen: true });
+          close();
+        },
+      },
+      {
+        id: "plan",
+        label: "Plan y suscripción",
+        icon: "star",
+        run: () => {
+          setUI({ settingsOpen: true, settingsTab: "Plan" });
+          close();
+        },
+      },
+      {
+        id: "members",
+        label: "Miembros del workspace",
+        icon: "user",
+        run: () => {
+          setUI({ shareOpen: true });
           close();
         },
       },
@@ -204,21 +301,32 @@ export default function CommandPalette() {
     setUI, reading.mode, reading.paper, setReading, readPage, pomodoro,
   ]);
 
+  /**
+   * Normaliza para buscar: minúsculas y sin acentos. En español se escribe
+   * rápido y sin tildes ("configuracion"), y antes eso devolvía cero resultados.
+   */
+  const flat = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
   const results = useMemo(() => {
-    const term = q.toLowerCase().trim();
+    const term = flat(q).trim();
     if (!term) {
       // sin búsqueda: acciones primero, después páginas recientes
       return [...items.filter((i) => !i.id.startsWith("page-"))].slice(0, 6).concat(
         items.filter((i) => i.id.startsWith("page-")).slice(0, 8),
       );
     }
-    return items.filter(
+    return [...items, ...hitItems].filter(
       (i) =>
-        i.label.toLowerCase().includes(term) ||
-        (i.sub ?? "").toLowerCase().includes(term) ||
+        i.id.startsWith("hit-") ||
+        flat(i.label).includes(term) ||
+        flat(i.sub ?? "").includes(term) ||
         (i.emoji ?? "").includes(term),
     );
-  }, [items, q]);
+  }, [items, hitItems, q]);
 
   if (!open) return null;
 
@@ -256,6 +364,34 @@ export default function CommandPalette() {
           <kbd className="rounded-[3px] border border-line px-1.5 py-0.5 text-[11px] text-fg/40">esc</kbd>
         </div>
 
+        <div className="flex items-center gap-1 border-b border-line px-3 py-1.5 text-[11.5px]">
+          <span className="mr-1 text-fg/40">Buscar en</span>
+          {([
+            { id: "todo" as const, texto: "Todo el workspace" },
+            { id: "rama" as const, texto: "Esta página y sus hijas" },
+          ]).map((op) => (
+            <button
+              key={op.id}
+              type="button"
+              data-alcance={op.id}
+              onClick={() => setAlcance(op.id)}
+              className={cx(
+                "rounded-[4px] px-1.5 py-[2px] transition-colors",
+                alcance === op.id
+                  ? "bg-accent/12 font-medium text-accent"
+                  : "text-fg/50 hover:bg-surface-hover hover:text-fg/80",
+              )}
+            >
+              {op.texto}
+            </button>
+          ))}
+          {q.trim().length >= 2 && (
+            <span data-hit-count className="ml-auto tabular-nums text-fg/35">
+              {hitItems.length} en contenido
+            </span>
+          )}
+        </div>
+
         <div className="max-h-[52vh] overflow-y-auto p-1.5">
           {results.length === 0 && (
             <div className="px-3 py-6 text-center text-[13px] text-fg/40">Sin resultados para “{q}”</div>
@@ -272,7 +408,11 @@ export default function CommandPalette() {
               )}
             >
               <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border border-line text-[13px]">
-                {item.emoji ?? <Icon name={item.icon ?? "search"} size={14} className="text-fg/60" />}
+                {item.emoji ? (
+                  <PageIcon icon={item.emoji} size={14} />
+                ) : (
+                  <Icon name={item.icon ?? "search"} size={14} className="text-fg/60" />
+                )}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px] text-fg">{item.label}</span>

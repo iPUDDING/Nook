@@ -2,7 +2,7 @@
 
 ## El ejecutable ya está construido
 
-**`Nook-0.2.2-portable.exe`** (78 MB). Un solo archivo, no instala nada, no pide
+**`Nook-0.10.0-portable.exe`** (78 MB). Un solo archivo, no instala nada, no pide
 permisos de administrador:
 
 1. Copialo a tu PC con Windows 10/11 (64 bits).
@@ -16,7 +16,7 @@ perfil de usuario (`%APPDATA%\Nook`).
 
 > Si preferís un instalador con acceso directo en el menú Inicio y desinstalador,
 > corré `npm run build:win` en `desktop/` sobre Windows: genera
-> `Nook-0.2.2-setup.exe` además del portable.
+> `Nook-0.10.0-setup.exe` además del portable.
 
 ---
 
@@ -74,7 +74,7 @@ Guía completa: **[docs/GITHUB.md](./docs/GITHUB.md)**. Los dos pasos que import
 2. **Descarga del `.exe`** — taggeá una versión:
 
    ```bash
-   git tag v0.2.2 && git push origin v0.2.2
+   git tag v0.10.0 && git push origin v0.10.0
    ```
 
    El workflow **release** compila el portable y el instalador, y los adjunta a

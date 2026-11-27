@@ -1,7 +1,7 @@
 {
   "name": "nook-desktop",
   "productName": "Nook",
-  "version": "0.2.2",
+  "version": "0.14.0",
   "description": "Nook — espacio de trabajo personal: notas, lectura en voz alta, mapas mentales y Pomodoro.",
   "author": "Nook",
   "license": "MIT",
@@ -40,11 +40,15 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -64,7 +68,9 @@
     "linux": {
       "icon": "resources/icon-1024.png",
       "category": "Office",
-      "target": ["dir"]
+      "target": [
+        "dir"
+      ]
     }
   }
 }
